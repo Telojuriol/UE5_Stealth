@@ -1,0 +1,14 @@
+{
+    "Version": "1.2",
+    "Data": {
+        "Source": "c:\\users\\laia\\documents\\ue5_stealth\\stealth\\source\\stealth\\stealth.cpp",
+        "ProvidedModule": "",
+        "PCH": "c:\\users\\laia\\documents\\ue5_stealth\\stealth\\intermediate\\build\\win64\\x64\\stealtheditor\\development\\unrealed\\sharedpch.unrealed.project.valapi.cpp20.inclorderoldest.h.pch",
+        "Includes": [
+            "c:\\users\\laia\\documents\\ue5_stealth\\stealth\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\stealth\\definitions.stealth.h",
+            "c:\\users\\laia\\documents\\ue5_stealth\\stealth\\source\\stealth\\stealth.h"
+        ],
+        "ImportedModules": [],
+        "ImportedHeaderUnits": []
+    }
+}

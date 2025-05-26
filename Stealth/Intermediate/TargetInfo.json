@@ -1,0 +1,14 @@
+{
+	"Targets": [
+		{
+			"Name": "Stealth",
+			"Path": "..\\Source\\Stealth.Target.cs",
+			"Type": "Game"
+		},
+		{
+			"Name": "StealthEditor",
+			"Path": "..\\Source\\StealthEditor.Target.cs",
+			"Type": "Editor"
+		}
+	]
+}
