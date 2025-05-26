@@ -10,5 +10,6 @@ UAISenseConfig_EnhancedSight::UAISenseConfig_EnhancedSight()
 
 TSubclassOf<UAISense> UAISenseConfig_EnhancedSight::GetSenseImplementation() const
 {
+    UE_LOG(LogTemp, Warning, TEXT("UAISenseConfig_EnhancedSight::GetSenseImplementation() called. Returning Implementation: %s"), *GetNameSafe(Implementation));
     return Implementation;
 }

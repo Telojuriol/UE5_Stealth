@@ -7,13 +7,15 @@
 UCLASS(ClassGroup = AI)
 class STEALTH_API UAISense_EnhancedSight : public UAISense
 {
-    GENERATED_BODY()
+   GENERATED_BODY()
 
 public:
-    UAISense_EnhancedSight();
+   UAISense_EnhancedSight();
 
-    virtual float Update() override;
+   virtual float Update() override;
+
+   virtual void PostInitProperties() override;
 
 private:
-    void ProcessSight();
+   void ProcessSight();
 };
