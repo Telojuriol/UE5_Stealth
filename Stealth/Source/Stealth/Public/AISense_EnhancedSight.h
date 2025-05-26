@@ -1,15 +1,19 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Perception/AISense.h"
+#include "AISense_EnhancedSight.generated.h"
 
-/**
- * 
- */
-class STEALTH_API AISense_EnhancedSight
+UCLASS(ClassGroup = AI)
+class STEALTH_API UAISense_EnhancedSight : public UAISense
 {
+    GENERATED_BODY()
+
 public:
-	AISense_EnhancedSight();
-	~AISense_EnhancedSight();
+    UAISense_EnhancedSight();
+
+    virtual float Update() override;
+
+private:
+    void ProcessSight();
 };

@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("StealthModuleRules")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Development")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+5bbb78032563d3998985d002022cd3502589ea15")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+34d70b975b4d80e5569bb1af71ffc529ce0b7224")]
 [assembly: System.Reflection.AssemblyProductAttribute("StealthModuleRules")]
 [assembly: System.Reflection.AssemblyTitleAttribute("StealthModuleRules")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

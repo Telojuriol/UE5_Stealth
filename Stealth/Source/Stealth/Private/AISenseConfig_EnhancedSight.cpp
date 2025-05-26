@@ -1,12 +1,14 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "AISenseConfig_EnhancedSight.h"
 
-AISenseConfig_EnhancedSight::AISenseConfig_EnhancedSight()
+UAISenseConfig_EnhancedSight::UAISenseConfig_EnhancedSight()
 {
+    Implementation = UAISense_EnhancedSight::StaticClass();
+    SightRadius = 2000.0f;
+    LoseSightRadius = 2500.0f;
+    PeripheralVisionAngle = 90.0f;
 }
 
-AISenseConfig_EnhancedSight::~AISenseConfig_EnhancedSight()
+TSubclassOf<UAISense> UAISenseConfig_EnhancedSight::GetSenseImplementation() const
 {
+    return Implementation;
 }

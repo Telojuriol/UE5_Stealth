@@ -1,15 +1,34 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Perception/AISenseConfig.h"
+#include "AISense_EnhancedSight.h"
+#include "AISenseConfig_EnhancedSight.generated.h"
 
-/**
- * 
- */
-class STEALTH_API AISenseConfig_EnhancedSight
+UCLASS(meta = (DisplayName = "Enhanced Sight"))
+class STEALTH_API UAISenseConfig_EnhancedSight : public UAISenseConfig
 {
+    GENERATED_BODY()
+
 public:
-	AISenseConfig_EnhancedSight();
-	~AISenseConfig_EnhancedSight();
+    UAISenseConfig_EnhancedSight();
+
+    virtual TSubclassOf<UAISense> GetSenseImplementation() const override;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sense", NoClear, config)
+    TSubclassOf<UAISense_EnhancedSight> Implementation;
+
+    /** Distance a pawn can see */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sense")
+    float SightRadius;
+
+    /** Distance a pawn loses sight */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sense")
+    float LoseSightRadius;
+
+    /** Angle of vision */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sense")
+    float PeripheralVisionAngle;
+
+    // Otros parámetros personalizados
 };
