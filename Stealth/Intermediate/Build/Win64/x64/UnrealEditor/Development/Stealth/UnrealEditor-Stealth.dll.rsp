@@ -40,6 +40,7 @@
 "C:\Users\Laia\Documents\UE5_Stealth\Stealth\Intermediate\Build\Win64\x64\UnrealEditor\Development\Stealth\AISenseConfig_EnhancedSight.cpp.obj"
 "C:\Users\Laia\Documents\UE5_Stealth\Stealth\Intermediate\Build\Win64\x64\UnrealEditor\Development\Stealth\AISense_EnhancedSight.cpp.obj"
 "C:\Users\Laia\Documents\UE5_Stealth\Stealth\Intermediate\Build\Win64\x64\UnrealEditor\Development\Stealth\Default.rc2.res"
+"..\Intermediate\Build\Win64\x64\UnrealEditor\Development\AIModule\UnrealEditor-AIModule.lib"
 "..\Intermediate\Build\Win64\x64\UnrealEditor\Development\Core\UnrealEditor-Core.lib"
 "..\Intermediate\Build\Win64\x64\UnrealEditor\Development\CoreUObject\UnrealEditor-CoreUObject.lib"
 "..\Intermediate\Build\Win64\x64\UnrealEditor\Development\Engine\UnrealEditor-Engine.lib"
