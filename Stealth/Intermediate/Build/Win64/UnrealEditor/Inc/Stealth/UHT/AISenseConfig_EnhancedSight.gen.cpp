@@ -69,11 +69,49 @@ struct Z_Construct_UClass_UAISenseConfig_EnhancedSight_Statics
 		{ "ToolTip", "Angle of vision" },
 #endif
 	};
+	static constexpr UECodeGen_Private::FMetaDataPairParam NewProp_FinalPeripheralVisionAngle_MetaData[] = {
+		{ "Category", "Sense" },
+#if !UE_BUILD_SHIPPING
+		{ "Comment", "/** Max Distance Up */" },
+#endif
+		{ "ModuleRelativePath", "Public/AISenseConfig_EnhancedSight.h" },
+#if !UE_BUILD_SHIPPING
+		{ "ToolTip", "Max Distance Up" },
+#endif
+	};
+	static constexpr UECodeGen_Private::FMetaDataPairParam NewProp_FinalPeripheralVisionAngleThreesholdDistance_MetaData[] = {
+		{ "Category", "Sense" },
+		{ "ModuleRelativePath", "Public/AISenseConfig_EnhancedSight.h" },
+	};
+	static constexpr UECodeGen_Private::FMetaDataPairParam NewProp_MaxDistUp_MetaData[] = {
+		{ "Category", "Sense" },
+#if !UE_BUILD_SHIPPING
+		{ "Comment", "/** Max Distance Up */" },
+#endif
+		{ "ModuleRelativePath", "Public/AISenseConfig_EnhancedSight.h" },
+#if !UE_BUILD_SHIPPING
+		{ "ToolTip", "Max Distance Up" },
+#endif
+	};
+	static constexpr UECodeGen_Private::FMetaDataPairParam NewProp_MaxDistDown_MetaData[] = {
+		{ "Category", "Sense" },
+#if !UE_BUILD_SHIPPING
+		{ "Comment", "/** Max Distance Down */" },
+#endif
+		{ "ModuleRelativePath", "Public/AISenseConfig_EnhancedSight.h" },
+#if !UE_BUILD_SHIPPING
+		{ "ToolTip", "Max Distance Down" },
+#endif
+	};
 #endif // WITH_METADATA
 	static const UECodeGen_Private::FClassPropertyParams NewProp_Implementation;
 	static const UECodeGen_Private::FFloatPropertyParams NewProp_SightRadius;
 	static const UECodeGen_Private::FFloatPropertyParams NewProp_LoseSightRadius;
 	static const UECodeGen_Private::FFloatPropertyParams NewProp_PeripheralVisionAngle;
+	static const UECodeGen_Private::FFloatPropertyParams NewProp_FinalPeripheralVisionAngle;
+	static const UECodeGen_Private::FFloatPropertyParams NewProp_FinalPeripheralVisionAngleThreesholdDistance;
+	static const UECodeGen_Private::FFloatPropertyParams NewProp_MaxDistUp;
+	static const UECodeGen_Private::FFloatPropertyParams NewProp_MaxDistDown;
 	static const UECodeGen_Private::FPropertyParamsBase* const PropPointers[];
 	static UObject* (*const DependentSingletons[])();
 	static constexpr FCppClassTypeInfoStatic StaticCppClassTypeInfo = {
@@ -85,11 +123,19 @@ const UECodeGen_Private::FClassPropertyParams Z_Construct_UClass_UAISenseConfig_
 const UECodeGen_Private::FFloatPropertyParams Z_Construct_UClass_UAISenseConfig_EnhancedSight_Statics::NewProp_SightRadius = { "SightRadius", nullptr, (EPropertyFlags)0x0010000000000005, UECodeGen_Private::EPropertyGenFlags::Float, RF_Public|RF_Transient|RF_MarkAsNative, nullptr, nullptr, 1, STRUCT_OFFSET(UAISenseConfig_EnhancedSight, SightRadius), METADATA_PARAMS(UE_ARRAY_COUNT(NewProp_SightRadius_MetaData), NewProp_SightRadius_MetaData) };
 const UECodeGen_Private::FFloatPropertyParams Z_Construct_UClass_UAISenseConfig_EnhancedSight_Statics::NewProp_LoseSightRadius = { "LoseSightRadius", nullptr, (EPropertyFlags)0x0010000000000005, UECodeGen_Private::EPropertyGenFlags::Float, RF_Public|RF_Transient|RF_MarkAsNative, nullptr, nullptr, 1, STRUCT_OFFSET(UAISenseConfig_EnhancedSight, LoseSightRadius), METADATA_PARAMS(UE_ARRAY_COUNT(NewProp_LoseSightRadius_MetaData), NewProp_LoseSightRadius_MetaData) };
 const UECodeGen_Private::FFloatPropertyParams Z_Construct_UClass_UAISenseConfig_EnhancedSight_Statics::NewProp_PeripheralVisionAngle = { "PeripheralVisionAngle", nullptr, (EPropertyFlags)0x0010000000000005, UECodeGen_Private::EPropertyGenFlags::Float, RF_Public|RF_Transient|RF_MarkAsNative, nullptr, nullptr, 1, STRUCT_OFFSET(UAISenseConfig_EnhancedSight, PeripheralVisionAngle), METADATA_PARAMS(UE_ARRAY_COUNT(NewProp_PeripheralVisionAngle_MetaData), NewProp_PeripheralVisionAngle_MetaData) };
+const UECodeGen_Private::FFloatPropertyParams Z_Construct_UClass_UAISenseConfig_EnhancedSight_Statics::NewProp_FinalPeripheralVisionAngle = { "FinalPeripheralVisionAngle", nullptr, (EPropertyFlags)0x0010000000000005, UECodeGen_Private::EPropertyGenFlags::Float, RF_Public|RF_Transient|RF_MarkAsNative, nullptr, nullptr, 1, STRUCT_OFFSET(UAISenseConfig_EnhancedSight, FinalPeripheralVisionAngle), METADATA_PARAMS(UE_ARRAY_COUNT(NewProp_FinalPeripheralVisionAngle_MetaData), NewProp_FinalPeripheralVisionAngle_MetaData) };
+const UECodeGen_Private::FFloatPropertyParams Z_Construct_UClass_UAISenseConfig_EnhancedSight_Statics::NewProp_FinalPeripheralVisionAngleThreesholdDistance = { "FinalPeripheralVisionAngleThreesholdDistance", nullptr, (EPropertyFlags)0x0010000000000005, UECodeGen_Private::EPropertyGenFlags::Float, RF_Public|RF_Transient|RF_MarkAsNative, nullptr, nullptr, 1, STRUCT_OFFSET(UAISenseConfig_EnhancedSight, FinalPeripheralVisionAngleThreesholdDistance), METADATA_PARAMS(UE_ARRAY_COUNT(NewProp_FinalPeripheralVisionAngleThreesholdDistance_MetaData), NewProp_FinalPeripheralVisionAngleThreesholdDistance_MetaData) };
+const UECodeGen_Private::FFloatPropertyParams Z_Construct_UClass_UAISenseConfig_EnhancedSight_Statics::NewProp_MaxDistUp = { "MaxDistUp", nullptr, (EPropertyFlags)0x0010000000000005, UECodeGen_Private::EPropertyGenFlags::Float, RF_Public|RF_Transient|RF_MarkAsNative, nullptr, nullptr, 1, STRUCT_OFFSET(UAISenseConfig_EnhancedSight, MaxDistUp), METADATA_PARAMS(UE_ARRAY_COUNT(NewProp_MaxDistUp_MetaData), NewProp_MaxDistUp_MetaData) };
+const UECodeGen_Private::FFloatPropertyParams Z_Construct_UClass_UAISenseConfig_EnhancedSight_Statics::NewProp_MaxDistDown = { "MaxDistDown", nullptr, (EPropertyFlags)0x0010000000000005, UECodeGen_Private::EPropertyGenFlags::Float, RF_Public|RF_Transient|RF_MarkAsNative, nullptr, nullptr, 1, STRUCT_OFFSET(UAISenseConfig_EnhancedSight, MaxDistDown), METADATA_PARAMS(UE_ARRAY_COUNT(NewProp_MaxDistDown_MetaData), NewProp_MaxDistDown_MetaData) };
 const UECodeGen_Private::FPropertyParamsBase* const Z_Construct_UClass_UAISenseConfig_EnhancedSight_Statics::PropPointers[] = {
 	(const UECodeGen_Private::FPropertyParamsBase*)&Z_Construct_UClass_UAISenseConfig_EnhancedSight_Statics::NewProp_Implementation,
 	(const UECodeGen_Private::FPropertyParamsBase*)&Z_Construct_UClass_UAISenseConfig_EnhancedSight_Statics::NewProp_SightRadius,
 	(const UECodeGen_Private::FPropertyParamsBase*)&Z_Construct_UClass_UAISenseConfig_EnhancedSight_Statics::NewProp_LoseSightRadius,
 	(const UECodeGen_Private::FPropertyParamsBase*)&Z_Construct_UClass_UAISenseConfig_EnhancedSight_Statics::NewProp_PeripheralVisionAngle,
+	(const UECodeGen_Private::FPropertyParamsBase*)&Z_Construct_UClass_UAISenseConfig_EnhancedSight_Statics::NewProp_FinalPeripheralVisionAngle,
+	(const UECodeGen_Private::FPropertyParamsBase*)&Z_Construct_UClass_UAISenseConfig_EnhancedSight_Statics::NewProp_FinalPeripheralVisionAngleThreesholdDistance,
+	(const UECodeGen_Private::FPropertyParamsBase*)&Z_Construct_UClass_UAISenseConfig_EnhancedSight_Statics::NewProp_MaxDistUp,
+	(const UECodeGen_Private::FPropertyParamsBase*)&Z_Construct_UClass_UAISenseConfig_EnhancedSight_Statics::NewProp_MaxDistDown,
 };
 static_assert(UE_ARRAY_COUNT(Z_Construct_UClass_UAISenseConfig_EnhancedSight_Statics::PropPointers) < 2048);
 UObject* (*const Z_Construct_UClass_UAISenseConfig_EnhancedSight_Statics::DependentSingletons[])() = {
@@ -132,10 +178,10 @@ UAISenseConfig_EnhancedSight::~UAISenseConfig_EnhancedSight() {}
 struct Z_CompiledInDeferFile_FID_Users_Laia_Documents_UE5_Stealth_Stealth_Source_Stealth_Public_AISenseConfig_EnhancedSight_h_Statics
 {
 	static constexpr FClassRegisterCompiledInInfo ClassInfo[] = {
-		{ Z_Construct_UClass_UAISenseConfig_EnhancedSight, UAISenseConfig_EnhancedSight::StaticClass, TEXT("UAISenseConfig_EnhancedSight"), &Z_Registration_Info_UClass_UAISenseConfig_EnhancedSight, CONSTRUCT_RELOAD_VERSION_INFO(FClassReloadVersionInfo, sizeof(UAISenseConfig_EnhancedSight), 1155873088U) },
+		{ Z_Construct_UClass_UAISenseConfig_EnhancedSight, UAISenseConfig_EnhancedSight::StaticClass, TEXT("UAISenseConfig_EnhancedSight"), &Z_Registration_Info_UClass_UAISenseConfig_EnhancedSight, CONSTRUCT_RELOAD_VERSION_INFO(FClassReloadVersionInfo, sizeof(UAISenseConfig_EnhancedSight), 500645000U) },
 	};
 };
-static FRegisterCompiledInInfo Z_CompiledInDeferFile_FID_Users_Laia_Documents_UE5_Stealth_Stealth_Source_Stealth_Public_AISenseConfig_EnhancedSight_h_2987973874(TEXT("/Script/Stealth"),
+static FRegisterCompiledInInfo Z_CompiledInDeferFile_FID_Users_Laia_Documents_UE5_Stealth_Stealth_Source_Stealth_Public_AISenseConfig_EnhancedSight_h_4074566856(TEXT("/Script/Stealth"),
 	Z_CompiledInDeferFile_FID_Users_Laia_Documents_UE5_Stealth_Stealth_Source_Stealth_Public_AISenseConfig_EnhancedSight_h_Statics::ClassInfo, UE_ARRAY_COUNT(Z_CompiledInDeferFile_FID_Users_Laia_Documents_UE5_Stealth_Stealth_Source_Stealth_Public_AISenseConfig_EnhancedSight_h_Statics::ClassInfo),
 	nullptr, 0,
 	nullptr, 0);

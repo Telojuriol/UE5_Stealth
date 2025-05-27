@@ -5,15 +5,7 @@
 			"guid": "00000000000000000000000000000000",
 			"description": "Default Uncontrolled Changelist",
 			"files": [
-				"C:/Users/Laia/Documents/UE5_Stealth/Stealth/Content/__ExternalActors__/ThirdPerson/Maps/ThirdPersonMap/1/HL/XWFFRCIJ8QK4NRO30ALA6J.uasset",
-				"C:/Users/Laia/Documents/UE5_Stealth/Stealth/Content/__ExternalActors__/ThirdPerson/Maps/ThirdPersonMap/D/VX/FLRELQ6EYQA4FA0B3B03WR.uasset",
-				"C:/Users/Laia/Documents/UE5_Stealth/Stealth/Content/__ExternalActors__/ThirdPerson/Maps/ThirdPersonMap/E/1G/EUZU0REF23NENKKW3U60AK.uasset",
-				"C:/Users/Laia/Documents/UE5_Stealth/Stealth/Content/__ExternalActors__/ThirdPerson/Maps/ThirdPersonMap/5/7E/BEYC27T14FHBU6LF2F60RR.uasset",
-				"C:/Users/Laia/Documents/UE5_Stealth/Stealth/Content/__ExternalActors__/ThirdPerson/Maps/ThirdPersonMap/E/8O/GK06JAEJ82TQ0GA2QB0DJG.uasset",
-				"C:/Users/Laia/Documents/UE5_Stealth/Stealth/Content/BP_AIEnemy.uasset",
-				"C:/Users/Laia/Documents/UE5_Stealth/Stealth/Content/__ExternalActors__/ThirdPerson/Maps/ThirdPersonMap/D/8W/FKLV03IDN6U50R7G6GWT7E.uasset",
-				"C:/Users/Laia/Documents/UE5_Stealth/Stealth/Content/BP_AIController.uasset",
-				"C:/Users/Laia/Documents/UE5_Stealth/Stealth/Content/__ExternalActors__/ThirdPerson/Maps/ThirdPersonMap/6/M2/HNS4HSGS08GQF4LFOFD65F.uasset"
+				"C:/Users/Laia/Documents/UE5_Stealth/Stealth/Content/BP_AIController.uasset"
 			]
 		}
 	]

@@ -30,5 +30,18 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sense")
     float PeripheralVisionAngle;
 
-    // Otros parámetros personalizados
+    /** Max Distance Up */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sense")
+    float FinalPeripheralVisionAngle;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sense")
+    float FinalPeripheralVisionAngleThreesholdDistance;
+
+    /** Max Distance Up */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sense")
+    float MaxDistUp;
+
+    /** Max Distance Down */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sense")
+    float MaxDistDown;
 };
