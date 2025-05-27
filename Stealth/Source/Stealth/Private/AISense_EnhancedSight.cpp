@@ -128,6 +128,8 @@ bool UAISense_EnhancedSight::IsInFovAndRange(
     FVector DirectionToTarget3D = TargetLocation - ViewPoint;
     const float DistanceToTargetSq3D = DirectionToTarget3D.SizeSquared();
 
+    UE_LOG(LogTemp, Log, TEXT("DistanceToTargetSq3D %.2f MaxRangeSquared %.2f"), DistanceToTargetSq3D, MaxRangeSquared);
+
     if (DistanceToTargetSq3D > MaxRangeSquared)
     {
         OutDistanceToTarget = FMath::Sqrt(DistanceToTargetSq3D);
@@ -244,7 +246,7 @@ static void DrawDebugArcManually(
     }
 }
 
-// Implementación de ProcessSight (con debug visual de arco manual)
+
 void UAISense_EnhancedSight::ProcessSight()
 {
     UWorld* World = GetWorld();
@@ -277,18 +279,17 @@ void UAISense_EnhancedSight::ProcessSight()
         if (!MyConfig)
         {
             continue;
-        } 
+        }
 
-        // ... (cálculos de MaxRangeSq, ThresholdHorizontalDist, DotProducts, CachedApexOffset, ViewPoint, ListenerForward3D, ListenerHorizontalForward - sin cambios)
-        const float MaxRangeFromConfig = MyConfig->SightRadius;
-        const float MaxRangeSq = FMath::Square(MaxRangeFromConfig);
-
-        const float ThresholdHorizontalDist = MyConfig->FinalPeripheralVisionAngleThreesholdDistance;
-        const float ThresholdHorizontalDistSq = FMath::Square(ThresholdHorizontalDist);
-
+        // Parámetros de Configuración del FOV
         const float InitialFovDegrees = MyConfig->PeripheralVisionAngle;
         const float FinalFovDegrees = MyConfig->FinalPeripheralVisionAngle;
+        const float ThresholdHorizontalDist = MyConfig->FinalPeripheralVisionAngleThreesholdDistance; // Typo en UPROPERTY, mantenido por consistencia
+        const float SightRadiusFromConfig = MyConfig->SightRadius;
+        const float LoseSightRadiusFromConfig = MyConfig->LoseSightRadius;
 
+        // Pre-cálculos para los dot products y offset (una vez por listener/config)
+        const float ThresholdHorizontalDistSq = FMath::Square(ThresholdHorizontalDist);
         const float InitialFovHorizontalDot = FMath::Cos(FMath::DegreesToRadians(InitialFovDegrees * 0.5f));
         const float FinalFovHorizontalDot = FMath::Cos(FMath::DegreesToRadians(FinalFovDegrees * 0.5f));
 
@@ -298,9 +299,9 @@ void UAISense_EnhancedSight::ProcessSight()
             ThresholdHorizontalDist
         );
 
+        // Obtener ViewPoint y ListenerForward del Listener
         FVector ViewPoint;
         FVector ListenerForward3D;
-
         APawn* ListenerPawn = Cast<APawn>(const_cast<AActor*>(ListenerActor));
         if (ListenerPawn)
         {
@@ -318,56 +319,81 @@ void UAISense_EnhancedSight::ProcessSight()
         ListenerHorizontalForward.Z = 0.0f;
         if (!ListenerHorizontalForward.Normalize())
         {
-            ListenerHorizontalForward = ListenerActor->GetActorForwardVector();
+            ListenerHorizontalForward = ListenerActor->GetActorForwardVector(); // Intenta con el del actor
             ListenerHorizontalForward.Z = 0.0f;
             if (!ListenerHorizontalForward.Normalize()) {
-                ListenerHorizontalForward = FVector::ForwardVector;
+                ListenerHorizontalForward = FVector::ForwardVector; // Fallback absoluto
             }
         }
 
-
-        // --- INICIO DEBUG VISUAL FOV (CON ARCO MANUAL) ---
+        // --- INICIO DEBUG VISUAL FOV (CORREGIDO PARA ARCOS EXTERIORES) ---
         if (bDrawDebugFov && World)
         {
             const FColor InitialFovColor = FColor::Green;
-            const FColor FinalFovColor = FColor::Cyan;
+            const FColor LoseSightRadiusColor = FColor::Orange;
+            // Usaremos InitialFovColor para el SightRadius para mantener la consistencia si es el único límite exterior.
+            const FColor SightRadiusDisplayColor = InitialFovColor;
+
             const float DebugLifeTime = 0.0f;
             const float Thickness = 1.0f;
-            const int32 ArcSegments = 16;
+            const int32 ArcSegments = 24;
             const FVector RotationAxis = FVector::UpVector;
 
-            // 1. Dibujar FOV Inicial
-            float HalfInitialFovDeg = InitialFovDegrees * 0.5f; // Usar grados para el helper
+            // 1. Dibujar FOV Inicial hasta el umbral (SIN CAMBIOS)
+            float HalfInitialFovDeg = InitialFovDegrees * 0.5f;
             FVector LeftEdgeDirInitial = ListenerHorizontalForward.RotateAngleAxis(-HalfInitialFovDeg, RotationAxis);
             FVector RightEdgeDirInitial = ListenerHorizontalForward.RotateAngleAxis(HalfInitialFovDeg, RotationAxis);
+            FVector LeftEdgeEndInitial_AtThreshold = ViewPoint + LeftEdgeDirInitial * ThresholdHorizontalDist;
+            FVector RightEdgeEndInitial_AtThreshold = ViewPoint + RightEdgeDirInitial * ThresholdHorizontalDist;
 
-            FVector LeftEdgeEndInitial = ViewPoint + LeftEdgeDirInitial * ThresholdHorizontalDist;
-            FVector RightEdgeEndInitial = ViewPoint + RightEdgeDirInitial * ThresholdHorizontalDist;
-
-            DrawDebugLine(World, ViewPoint, LeftEdgeEndInitial, InitialFovColor, false, DebugLifeTime, 0, Thickness);
-            DrawDebugLine(World, ViewPoint, RightEdgeEndInitial, InitialFovColor, false, DebugLifeTime, 0, Thickness);
-            // Usar el helper para dibujar el arco
+            DrawDebugLine(World, ViewPoint, LeftEdgeEndInitial_AtThreshold, InitialFovColor, false, DebugLifeTime, 0, Thickness);
+            DrawDebugLine(World, ViewPoint, RightEdgeEndInitial_AtThreshold, InitialFovColor, false, DebugLifeTime, 0, Thickness);
             DrawDebugArcManually(World, ViewPoint, ThresholdHorizontalDist, RotationAxis, ListenerHorizontalForward, HalfInitialFovDeg, ArcSegments, InitialFovColor, DebugLifeTime, Thickness);
 
-            // 2. Dibujar FOV Final
+            // 2. Dibujo del FOV Extendido
+            // VirtualOriginFinalFov sigue siendo necesario para la lógica de IsInFovAndRange y para entender la forma del cono final.
             FVector VirtualOriginFinalFov = ViewPoint + ListenerHorizontalForward * CachedApexOffset;
-            float HalfFinalFovDeg = FinalFovDegrees * 0.5f; // Usar grados para el helper
-            FVector LeftEdgeDirFinal = ListenerHorizontalForward.RotateAngleAxis(-HalfFinalFovDeg, RotationAxis);
-            FVector RightEdgeDirFinal = ListenerHorizontalForward.RotateAngleAxis(HalfFinalFovDeg, RotationAxis);
+            float HalfFinalFovDeg = FinalFovDegrees * 0.5f; // Ángulo para la forma del FOV final
 
-            DrawDebugLine(World, VirtualOriginFinalFov, VirtualOriginFinalFov + LeftEdgeDirFinal * MaxRangeFromConfig, FinalFovColor, false, DebugLifeTime, 0, Thickness);
-            DrawDebugLine(World, VirtualOriginFinalFov, VirtualOriginFinalFov + RightEdgeDirFinal * MaxRangeFromConfig, FinalFovColor, false, DebugLifeTime, 0, Thickness);
-            // Usar el helper para dibujar el arco
-            DrawDebugArcManually(World, VirtualOriginFinalFov, MaxRangeFromConfig, RotationAxis, ListenerHorizontalForward, HalfFinalFovDeg, ArcSegments, FinalFovColor, DebugLifeTime, Thickness);
+            // Puntos finales para el límite de SightRadius, PERO AHORA CALCULADOS DESDE ViewPoint
+            FVector LeftEdgeEnd_AtSightRadius_FromViewPoint = ViewPoint + ListenerHorizontalForward.RotateAngleAxis(-HalfFinalFovDeg, RotationAxis) * SightRadiusFromConfig;
+            FVector RightEdgeEnd_AtSightRadius_FromViewPoint = ViewPoint + ListenerHorizontalForward.RotateAngleAxis(HalfFinalFovDeg, RotationAxis) * SightRadiusFromConfig;
 
-            if (CachedApexOffset != 0.0f)
+            // Dibujar líneas conectando el umbral con el límite de SightRadius
+            DrawDebugLine(World, LeftEdgeEndInitial_AtThreshold, LeftEdgeEnd_AtSightRadius_FromViewPoint, SightRadiusDisplayColor, false, DebugLifeTime, 0, Thickness);
+            DrawDebugLine(World, RightEdgeEndInitial_AtThreshold, RightEdgeEnd_AtSightRadius_FromViewPoint, SightRadiusDisplayColor, false, DebugLifeTime, 0, Thickness);
+
+            // Dibujar Arco para SightRadius, CENTRADO EN ViewPoint, usando el ángulo del FOV final
+            DrawDebugArcManually(World, ViewPoint, SightRadiusFromConfig, RotationAxis, ListenerHorizontalForward, HalfFinalFovDeg, ArcSegments, SightRadiusDisplayColor, DebugLifeTime, Thickness);
+
+            // Si LoseSightRadius es mayor, dibuja su límite también, CENTRADO EN ViewPoint
+            if (LoseSightRadiusFromConfig > SightRadiusFromConfig)
+            {
+                // Puntos finales para el límite de LoseSightRadius, CALCULADOS DESDE ViewPoint
+                FVector LeftEdgeEnd_AtLoseRadius_FromViewPoint = ViewPoint + ListenerHorizontalForward.RotateAngleAxis(-HalfFinalFovDeg, RotationAxis) * LoseSightRadiusFromConfig;
+                FVector RightEdgeEnd_AtLoseRadius_FromViewPoint = ViewPoint + ListenerHorizontalForward.RotateAngleAxis(HalfFinalFovDeg, RotationAxis) * LoseSightRadiusFromConfig;
+
+                // Líneas conectando el límite de SightRadius con el límite de LoseSightRadius
+                DrawDebugLine(World, LeftEdgeEnd_AtSightRadius_FromViewPoint, LeftEdgeEnd_AtLoseRadius_FromViewPoint, LoseSightRadiusColor, false, DebugLifeTime, 0, Thickness * 0.7f);
+                DrawDebugLine(World, RightEdgeEnd_AtSightRadius_FromViewPoint, RightEdgeEnd_AtLoseRadius_FromViewPoint, LoseSightRadiusColor, false, DebugLifeTime, 0, Thickness * 0.7f);
+
+                // Arco para LoseSightRadius, CENTRADO EN ViewPoint, usando el ángulo del FOV final
+                DrawDebugArcManually(World, ViewPoint, LoseSightRadiusFromConfig, RotationAxis, ListenerHorizontalForward, HalfFinalFovDeg, ArcSegments, LoseSightRadiusColor, DebugLifeTime, Thickness * 0.7f);
+            }
+
+            // Dibujar el VirtualOriginFinalFov sigue siendo útil para entender la geometría de la *comprobación angular*
+            if (FMath::Abs(CachedApexOffset) > KINDA_SMALL_NUMBER)
             {
                 DrawDebugPoint(World, VirtualOriginFinalFov, 15.f, FColor::Magenta, false, DebugLifeTime);
+                // Opcional: Dibuja las líneas del cono "real" desde el vértice virtual con un color tenue para entender la forma
+                FVector TrueConeLeftEdgeDir = ListenerHorizontalForward.RotateAngleAxis(-HalfFinalFovDeg, RotationAxis);
+                FVector TrueConeRightEdgeDir = ListenerHorizontalForward.RotateAngleAxis(HalfFinalFovDeg, RotationAxis);
+                // DrawDebugLine(World, VirtualOriginFinalFov, VirtualOriginFinalFov + TrueConeLeftEdgeDir * SightRadiusFromConfig, FColor(255,0,255,64), false, DebugLifeTime,0,0.5f);
+                // DrawDebugLine(World, VirtualOriginFinalFov, VirtualOriginFinalFov + TrueConeRightEdgeDir * SightRadiusFromConfig, FColor(255,0,255,64), false, DebugLifeTime,0,0.5f);
             }
         }
-        // --- FIN DEBUG VISUAL FOV ---
+        
 
-        // ... (el resto de tu bucle de TargetIt y la lógica de percepción, sin cambios desde tu versión funcional) ...
         for (TActorIterator<APawn> TargetIt(World); TargetIt; ++TargetIt)
         {
             APawn* TargetActorAsPawn = *TargetIt;
@@ -379,31 +405,7 @@ void UAISense_EnhancedSight::ProcessSight()
 
             AActor* TargetActor = TargetActorAsPawn;
 
-            float DistanceToTarget;
-            FVector DirectionToTarget;
-
-            bool bIsInFovAndRange = IsInFovAndRange(
-                ViewPoint,
-                ListenerHorizontalForward,
-                MaxRangeSq,
-                TargetActor,
-                ThresholdHorizontalDistSq,
-                InitialFovHorizontalDot,
-                FinalFovHorizontalDot,
-                CachedApexOffset,
-                DistanceToTarget,
-                DirectionToTarget
-            );
-
-            // UE_LOG(LogTemp, Log, TEXT("bIsInFovAndRange para %s: %s"), *TargetActor->GetName(), bIsInFovAndRange ? TEXT("true") : TEXT("false"));
-
-            bool bCurrentlyHasLineOfSight = false;
-            if (bIsInFovAndRange)
-            {
-                bCurrentlyHasLineOfSight = HasLineOfSight(World, ViewPoint, TargetActor, ListenerActor);
-            }
-            const bool bIsCurrentlyVisible = bIsInFovAndRange && bCurrentlyHasLineOfSight;
-
+            // --- Determinar si el objetivo ya era visible ---
             const FActorPerceptionInfo* TargetPerceptionInfo = PerceptionComponent->GetActorInfo(*TargetActor);
             bool bWasSuccessfullySensedPreviously = false;
             if (TargetPerceptionInfo)
@@ -415,9 +417,48 @@ void UAISense_EnhancedSight::ProcessSight()
                 }
             }
 
+            // --- Determinar el radio máximo a usar para LA COMPROBACIÓN ACTUAL ---
+            float RangeToCheckThisFrame;
+            if (bWasSuccessfullySensedPreviously)
+            {
+                RangeToCheckThisFrame = FMath::Max(SightRadiusFromConfig, LoseSightRadiusFromConfig);
+            }
+            else
+            {
+                RangeToCheckThisFrame = SightRadiusFromConfig;
+            }
+            const float MaxRangeSqForCheck = FMath::Square(RangeToCheckThisFrame);
+
+            // Parámetros de salida para IsInFovAndRange
+            float DistanceToTarget;
+            FVector DirectionToTarget;
+            const FVector TargetLocation = TargetActor->GetActorLocation();
+            FVector DirectionToTarget3D = TargetLocation - ViewPoint;
+            const float DistanceToTargetSq3D = DirectionToTarget3D.Size();
+            UE_LOG(LogTemp, Log, TEXT("DistanceToTargetSq3D %.2f MaxRangeSquared %.2f"), DistanceToTargetSq3D, RangeToCheckThisFrame);
+            bool bIsInFovAndRange = IsInFovAndRange(
+                ViewPoint,
+                ListenerHorizontalForward,
+                MaxRangeSqForCheck, // <--- USA EL RADIO CALCULADO DINÁMICAMENTE
+                TargetActor,
+                ThresholdHorizontalDistSq,
+                InitialFovHorizontalDot,
+                FinalFovHorizontalDot,
+                CachedApexOffset,
+                DistanceToTarget,
+                DirectionToTarget
+            );
+
+            bool bCurrentlyHasLineOfSight = false;
+            if (bIsInFovAndRange)
+            {
+                bCurrentlyHasLineOfSight = HasLineOfSight(World, ViewPoint, TargetActor, ListenerActor);
+            }
+            const bool bIsCurrentlyVisible = bIsInFovAndRange && bCurrentlyHasLineOfSight;
+
             FAIStimulus::FResult CurrentSenseResult = bIsCurrentlyVisible ? FAIStimulus::SensingSucceeded : FAIStimulus::SensingFailed;
             bool bShouldReportStimulus = false;
-
+            
             if (bIsCurrentlyVisible)
             {
                 bShouldReportStimulus = true;
@@ -453,4 +494,3 @@ void UAISense_EnhancedSight::ProcessSight()
         }
     }
 }
-
