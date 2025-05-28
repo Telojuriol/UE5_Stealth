@@ -8,6 +8,7 @@
 
 // Forward declaration for your specific config class
 class UAISenseConfig_EnhancedSight;
+class ACharacter; // Forward declare ACharacter
 
 UCLASS(ClassGroup = AI)
 class STEALTH_API UAISense_EnhancedSight : public UAISense
@@ -63,6 +64,11 @@ protected:
         const UWorld* World,
         const FVector& ViewPoint,
         const AActor* TargetActor,
-        const AActor* IgnoredActorForTrace
+        const AActor* IgnoredActorForTrace,
+        const UAISenseConfig_EnhancedSight* SenseConfig // Added SenseConfig
     ) const;
+
+private:
+    // Helper to get specific target points for multi-raycast
+    TArray<FVector> GetRaycastTargetPoints(const AActor* TargetActor) const;
 };

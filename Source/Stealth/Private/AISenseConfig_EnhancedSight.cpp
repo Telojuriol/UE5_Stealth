@@ -1,3 +1,5 @@
+// AISenseConfig_EnhancedSight.cpp
+
 #include "AISenseConfig_EnhancedSight.h"
 #include "AISense_EnhancedSight.h"
 
@@ -13,8 +15,10 @@ UAISenseConfig_EnhancedSight::UAISenseConfig_EnhancedSight()
     FinalPeripheralVisionAngleThreesholdDistance = 1000.0f;
 
     VerticalPeripheralVisionAngle = 170.0f;
-    MaxDistUp = 1000.0f;                  
+    MaxDistUp = 1000.0f;
     MaxDistDown = 1000.0f;
+
+    RequiredRaycastHits = 2; // Default to 2 hit required
 
     bDrawDebug = true;
 }

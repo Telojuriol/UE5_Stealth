@@ -1,3 +1,5 @@
+// AISenseConfig_EnhancedSight.h
+
 #pragma once
 
 #include "CoreMinimal.h"
@@ -40,7 +42,7 @@ public:
 
     /** Vertical peripheral vision angle in degrees (total cone angle). */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sense", meta = (UIMin = "0.0", UIMax = "180.0")) // Max 180 para vertical
-    float VerticalPeripheralVisionAngle;
+        float VerticalPeripheralVisionAngle;
 
     /** Maximum vertical distance upwards the pawn can see. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sense", meta = (UIMin = "0.0"))
@@ -49,6 +51,10 @@ public:
     /** Maximum vertical distance downwards the pawn can see. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sense", meta = (UIMin = "0.0"))
     float MaxDistDown;
+
+    /** Number of raycasts (to head, chest, pelvis) that must hit the target for it to be considered visible. Min 1, Max 3. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sense", meta = (UIMin = "1", UIMax = "3", ClampMin = "1", ClampMax = "3"))
+    int32 RequiredRaycastHits;
 
     /** If true, debug shapes for this sense will be drawn in the world. */
     UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Debug", config)
