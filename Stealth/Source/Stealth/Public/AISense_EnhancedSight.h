@@ -1,8 +1,13 @@
+// AISense_EnhancedSight.h
+
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Perception/AISense.h"
 #include "AISense_EnhancedSight.generated.h"
+
+// Forward declaration for your specific config class
+class UAISenseConfig_EnhancedSight;
 
 UCLASS(ClassGroup = AI)
 class STEALTH_API UAISense_EnhancedSight : public UAISense
@@ -16,45 +21,44 @@ public:
     virtual void PostInitProperties() override;
 
 private:
+    // Main processing function called by Update
     void ProcessSight();
 
+    // Calculates the apex offset for the final (far) FOV cone for horizontal checks
     float CalculateFovApexOffset(
         float InitialFovDegrees,
         float FinalFovDegrees,
-        float ThresholdHorizontalDistance) const;
+        float ThresholdRadialDistance) const;
 
-    // Nueva función para dibujar el FOV de debug
+    // Draws the complete debug visualization for the FOV (horizontal and vertical)
     void DrawDebugEnhancedFov(
         const UWorld* World,
         const FVector& ViewPoint,
-        const FVector& ListenerHorizontalForward,
-        float InitialFovDegrees,
-        float FinalFovDegrees,
-        float ThresholdHorizontalDist,
-        float SightRadiusFromConfig,
-        float LoseSightRadiusFromConfig,
+        const FVector& ListenerHorizontalForward,     // For horizontal FOV drawing
+        const FVector& ListenerActualForward3D,       // For vertical FOV drawing
+        const UAISenseConfig_EnhancedSight* SenseConfig, // To access all FOV parameters
         float CachedApexOffset,
-        bool  DrawDebug
-    ) const; // Marcada como const ya que no modifica el estado del sentido
-
-    // La función estática para dibujar arcos permanece igual,
-    // su declaración no es necesaria aquí si está definida como 'static' en el .cpp
-    // static void DrawDebugArcManually(...); 
-
-protected:
-    bool IsInFovAndRange(
-        const FVector& ViewPoint,
-        const FVector& ListenerHorizontalForwardNormalized,
-        float MaxRangeSquared,
-        const AActor* TargetActor,
-        float ThresholdHorizontalDistanceSq,
-        float InitialFovHorizontalDotProduct,
-        float FinalFovHorizontalDotProduct,
-        float CachedApexOffset,
-        float& OutDistanceToTarget,
-        FVector& OutDirectionToTargetNormalized
+        const AActor* ListenerActorForDebug     // For robust RightVector calculation in vertical debug
     ) const;
 
+protected:
+    // Checks if a target is within the combined horizontal and vertical FOV, and range limits
+    bool IsInFovAndRange(
+        const FVector& ViewPoint,
+        const FVector& ListenerHorizontalForwardNormalized, // For horizontal FOV check
+        const FVector& ListenerActualForward3D,             // For vertical FOV check
+        const UAISenseConfig_EnhancedSight* SenseConfig,  // To access all FOV parameters including vertical
+        float MaxHorizontalRangeSquared,                  // Max range for horizontal checks, already squared
+        const AActor* TargetActor,
+        float ThresholdHorizontalDistanceSq,     // Threshold for horizontal FOV angle switch, squared
+        float InitialFovHorizontalDotProduct,    // Precalculated dot product for initial horizontal FOV
+        float FinalFovHorizontalDotProduct,      // Precalculated dot product for final horizontal FOV
+        float CachedApexOffset,                  // Pre-calculated virtual apex offset for horizontal FOV
+        float& OutDistanceToTarget3D,            // Output: Actual 3D distance
+        FVector& OutDirectionToTarget3DNormalized // Output: Normalized 3D direction
+    ) const;
+
+    // Checks for a direct line of sight to the target
     bool HasLineOfSight(
         const UWorld* World,
         const FVector& ViewPoint,

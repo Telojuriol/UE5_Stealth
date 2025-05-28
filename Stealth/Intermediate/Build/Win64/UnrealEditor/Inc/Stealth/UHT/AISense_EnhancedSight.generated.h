@@ -14,7 +14,7 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 #endif
 #define STEALTH_AISense_EnhancedSight_generated_h
 
-#define FID_Users_Laia_Documents_UE5_Stealth_Stealth_Source_Stealth_Public_AISense_EnhancedSight_h_10_INCLASS_NO_PURE_DECLS \
+#define FID_Users_Laia_Documents_UE5_Stealth_Stealth_Source_Stealth_Public_AISense_EnhancedSight_h_15_INCLASS_NO_PURE_DECLS \
 private: \
 	static void StaticRegisterNativesUAISense_EnhancedSight(); \
 	friend struct Z_Construct_UClass_UAISense_EnhancedSight_Statics; \
@@ -23,7 +23,7 @@ public: \
 	DECLARE_SERIALIZER(UAISense_EnhancedSight)
 
 
-#define FID_Users_Laia_Documents_UE5_Stealth_Stealth_Source_Stealth_Public_AISense_EnhancedSight_h_10_ENHANCED_CONSTRUCTORS \
+#define FID_Users_Laia_Documents_UE5_Stealth_Stealth_Source_Stealth_Public_AISense_EnhancedSight_h_15_ENHANCED_CONSTRUCTORS \
 private: \
 	/** Private move- and copy-constructors, should never be used */ \
 	UAISense_EnhancedSight(UAISense_EnhancedSight&&); \
@@ -35,12 +35,12 @@ public: \
 	NO_API virtual ~UAISense_EnhancedSight();
 
 
-#define FID_Users_Laia_Documents_UE5_Stealth_Stealth_Source_Stealth_Public_AISense_EnhancedSight_h_7_PROLOG
-#define FID_Users_Laia_Documents_UE5_Stealth_Stealth_Source_Stealth_Public_AISense_EnhancedSight_h_10_GENERATED_BODY \
+#define FID_Users_Laia_Documents_UE5_Stealth_Stealth_Source_Stealth_Public_AISense_EnhancedSight_h_12_PROLOG
+#define FID_Users_Laia_Documents_UE5_Stealth_Stealth_Source_Stealth_Public_AISense_EnhancedSight_h_15_GENERATED_BODY \
 PRAGMA_DISABLE_DEPRECATION_WARNINGS \
 public: \
-	FID_Users_Laia_Documents_UE5_Stealth_Stealth_Source_Stealth_Public_AISense_EnhancedSight_h_10_INCLASS_NO_PURE_DECLS \
-	FID_Users_Laia_Documents_UE5_Stealth_Stealth_Source_Stealth_Public_AISense_EnhancedSight_h_10_ENHANCED_CONSTRUCTORS \
+	FID_Users_Laia_Documents_UE5_Stealth_Stealth_Source_Stealth_Public_AISense_EnhancedSight_h_15_INCLASS_NO_PURE_DECLS \
+	FID_Users_Laia_Documents_UE5_Stealth_Stealth_Source_Stealth_Public_AISense_EnhancedSight_h_15_ENHANCED_CONSTRUCTORS \
 private: \
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
 

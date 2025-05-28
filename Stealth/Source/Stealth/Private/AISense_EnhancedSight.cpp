@@ -5,236 +5,95 @@
 #include "Perception/AIPerceptionSystem.h"
 #include "Perception/AIPerceptionTypes.h"
 #include "Perception/AISenseConfig.h"
-#include "AISenseConfig_EnhancedSight.h"
-#include "EngineUtils.h"
+#include "AISenseConfig_EnhancedSight.h" // Your specific config class
+#include "EngineUtils.h"                 // For TActorIterator
 #include "GameFramework/Pawn.h"
 #include "GameFramework/Actor.h"
 #include "Engine/World.h"
-#include "Kismet/KismetSystemLibrary.h" // For DrawDebugLine, DrawDebugPoint
+#include "Kismet/KismetSystemLibrary.h" // For DrawDebugPoint
 #include "Math/Vector.h"
 #include "Math/Rotator.h"
 #include "Math/UnrealMathUtility.h"     // For FMath, UE_PI, UE_BIG_NUMBER
-#include "DrawDebugHelpers.h"           // For additional debug drawing (though DrawDebugArcManually is custom)
+#include "DrawDebugHelpers.h"           // For DrawDebugLine
 
-// Constructor
-UAISense_EnhancedSight::UAISense_EnhancedSight()
-{
-    UE_LOG(LogTemp, Warning, TEXT("EnhancedSight Constructor() called")); // User's existing log
-    RequestImmediateUpdate();
-    NotifyType = EAISenseNotifyType::OnEveryPerception;
-}
-
-// PostInitProperties
-void UAISense_EnhancedSight::PostInitProperties()
-{
-    Super::PostInitProperties();
-    UE_LOG(LogTemp, Warning, TEXT("UAISense_EnhancedSight::PostInitProperties() CALLED")); // User's existing log
-}
-
-// Update is called by the AIPerceptionSystem to perform sight checks.
-float UAISense_EnhancedSight::Update()
-{
-    // Removed recurrent log from here to reduce spam.
-    ProcessSight();
-    return 0.f; // User's current setting. Consider a small positive value (e.g., 0.1f) to control update frequency.
-}
-
-// Calculates the virtual apex offset for the final FOV cone.
-// This ensures the final FOV cone's edges meet the initial FOV cone's edges at the threshold distance.
-float UAISense_EnhancedSight::CalculateFovApexOffset(
-    float InitialFovDegrees,
-    float FinalFovDegrees,
-    float ThresholdRadialDistance) const
-{
-    // Sanity checks for input parameters.
-    if (ThresholdRadialDistance < KINDA_SMALL_NUMBER ||
-        InitialFovDegrees < KINDA_SMALL_NUMBER || InitialFovDegrees >= 179.9f ||
-        FinalFovDegrees < KINDA_SMALL_NUMBER || FinalFovDegrees >= 179.9f)
-    {
-        return 0.0f; // Return no offset for invalid or extreme FOV values.
-    }
-
-    const float HalfInitialFovRad = FMath::DegreesToRadians(InitialFovDegrees * 0.5f);
-    const float HalfFinalFovRad = FMath::DegreesToRadians(FinalFovDegrees * 0.5f);
-
-    // If either half-angle is close to 90 degrees (FOV close to 180), Tangent becomes problematic.
-    if (FMath::Abs(HalfInitialFovRad - (UE_PI * 0.5f)) < KINDA_SMALL_NUMBER ||
-        FMath::Abs(HalfFinalFovRad - (UE_PI * 0.5f)) < KINDA_SMALL_NUMBER) {
-        return 0.0f; // No offset for FOVs near 180 degrees.
-    }
-
-    float TanHalfInitial = FMath::Tan(HalfInitialFovRad);
-    float TanHalfFinal = FMath::Tan(HalfFinalFovRad);
-
-    // Calculate geometry for the initial FOV cone.
-    // ActualLastRight: Half-width of the initial FOV sector's base.
-    // ThresholdRadialDistance is treated as the slant length to the edge of this sector.
-    float ActualLastRight = FMath::IsNearlyZero(TanHalfInitial) ? 0.0f : (ThresholdRadialDistance * FMath::Sin(HalfInitialFovRad));
-
-    // ActualLastForward: Forward projection distance to the plane containing the base of the initial cone.
-    float ActualLastForward = ThresholdRadialDistance * FMath::Cos(HalfInitialFovRad);
-
-    // Calculate ForwardDiff for the final FOV.
-    // This is the forward distance the final FOV's virtual apex would need to be from the shared base plane
-    // to achieve the same width (ActualLastRight) at that plane.
-    float ForwardDiff;
-    if (FMath::IsNearlyZero(TanHalfFinal)) // Final FOV is effectively 0 degrees.
-    {
-        ForwardDiff = FMath::IsNearlyZero(ActualLastRight) ? ActualLastForward : UE_BIG_NUMBER;
-    }
-    else
-    {
-        ForwardDiff = ActualLastRight / TanHalfFinal;
-    }
-
-    // Clamp ForwardDiff to prevent extreme offset values due to float precision with UE_BIG_NUMBER.
-    if (ForwardDiff > (UE_BIG_NUMBER / 2.0f))
-    {
-        ForwardDiff = (UE_BIG_NUMBER / 2.0f);
-    }
-    else if (ForwardDiff < (-UE_BIG_NUMBER / 2.0f))
-    {
-        ForwardDiff = (-UE_BIG_NUMBER / 2.0f);
-    }
-
-    // The offset is the difference in forward projection of the two cones.
-    return ActualLastForward - ForwardDiff;
-}
-
-// Checks if a target actor is within the defined Field of View and range.
-bool UAISense_EnhancedSight::IsInFovAndRange(
-    const FVector& ViewPoint,
-    const FVector& ListenerHorizontalForwardNormalized,
-    float MaxHorizontalRangeSquared, // Max range, interpreted as horizontal, already squared.
-    const AActor* TargetActor,
-    float ThresholdHorizontalDistanceSq, // Threshold for FOV switch, horizontal, already squared.
-    float InitialFovHorizontalDotProduct,  // Dot product for initial FOV angle.
-    float FinalFovHorizontalDotProduct,    // Dot product for final FOV angle.
-    float CachedApexOffset,                // Pre-calculated virtual apex offset.
-    float& OutDistanceToTarget3D,          // Output: Actual 3D distance to target.
-    FVector& OutDirectionToTarget3DNormalized // Output: Normalized 3D direction to target.
-) const
-{
-    if (!TargetActor)
-    {
-        return false;
-    }
-
-    const FVector TargetLocation = TargetActor->GetActorLocation();
-    FVector DirectionToTarget3D = TargetLocation - ViewPoint;
-    const float DistanceToTargetSq3D = DirectionToTarget3D.SizeSquared();
-
-    // Populate 3D output parameters first.
-    OutDistanceToTarget3D = FMath::Sqrt(DistanceToTargetSq3D);
-    if (OutDistanceToTarget3D < KINDA_SMALL_NUMBER) // Target is at the viewpoint.
-    {
-        OutDirectionToTarget3DNormalized = ListenerHorizontalForwardNormalized; // Default direction.
-        return true; // Considered within range and FOV if at the same point.
-    }
-    OutDirectionToTarget3DNormalized = DirectionToTarget3D / OutDistanceToTarget3D;
-
-    // Perform calculations on the horizontal plane (Z-plane of ViewPoint).
-    FVector TargetLocationHorizontal = TargetLocation;
-    TargetLocationHorizontal.Z = ViewPoint.Z;
-
-    FVector DirectionToTargetHorizontal = TargetLocationHorizontal - ViewPoint;
-    const float DistanceToTargetHorizontalSq = DirectionToTargetHorizontal.SizeSquared();
-
-    // Primary range check using horizontal distance.
-    if (DistanceToTargetHorizontalSq > MaxHorizontalRangeSquared)
-    {
-        return false;
-    }
-
-    FVector DirectionToTargetHorizontalNormalized = DirectionToTargetHorizontal.GetSafeNormal();
-    if (DirectionToTargetHorizontal.IsNearlyZero()) // Target is horizontally at the same spot as viewpoint.
-    {
-        return true; // Within range and no horizontal angle to check.
-    }
-
-    float RelevantHorizontalDotProduct;
-    FVector OriginForAngleCheckHorizontal = ViewPoint; // Default origin for angle check.
-
-    // Determine if target is within the initial threshold distance.
-    if (DistanceToTargetHorizontalSq <= ThresholdHorizontalDistanceSq)
-    {
-        // Within threshold: use initial FOV parameters.
-        RelevantHorizontalDotProduct = InitialFovHorizontalDotProduct;
-        // Angle check origin remains ViewPoint.
-    }
-    else
-    {
-        // Beyond threshold: use final FOV parameters and the shifted apex.
-        RelevantHorizontalDotProduct = FinalFovHorizontalDotProduct;
-        OriginForAngleCheckHorizontal = ViewPoint + ListenerHorizontalForwardNormalized * CachedApexOffset;
-
-        // Recalculate direction from the new virtual origin for angle check.
-        DirectionToTargetHorizontal = TargetLocationHorizontal - OriginForAngleCheckHorizontal;
-        DirectionToTargetHorizontalNormalized = DirectionToTargetHorizontal.GetSafeNormal();
-
-        if (DirectionToTargetHorizontal.IsNearlyZero()) // Target is at the virtual apex.
-        {
-            return true;
-        }
-    }
-
-    // Perform the horizontal angle check.
-    const float DotProductHorizontal = FVector::DotProduct(ListenerHorizontalForwardNormalized, DirectionToTargetHorizontalNormalized);
-    return DotProductHorizontal >= RelevantHorizontalDotProduct;
-}
-
-// Checks for a direct line of sight between ViewPoint and TargetActor.
-bool UAISense_EnhancedSight::HasLineOfSight(
-    const UWorld* World,
-    const FVector& ViewPoint,
-    const AActor* TargetActor,
-    const AActor* IgnoredActorForTrace // Typically the sensing actor itself.
-) const
-{
-    if (!World || !TargetActor)
-    {
-        return false;
-    }
-
-    FHitResult HitResult;
-    FCollisionQueryParams QueryParams;
-    QueryParams.AddIgnoredActor(IgnoredActorForTrace); // Ignore self in trace.
-
-    const FVector TargetLocation = TargetActor->GetActorLocation(); // Or a specific socket on the target.
-
-    bool bHit = World->LineTraceSingleByChannel(
-        HitResult,
-        ViewPoint,
-        TargetLocation,
-        ECC_Visibility, // Standard visibility channel.
-        QueryParams
-    );
-
-    // If no hit, or hit actor is the target, then LoS is clear.
-    return !bHit || (HitResult.GetActor() == TargetActor);
-}
-
-static void DrawDebugArcManually(
+// File-static helper function for drawing debug arcs with Z-capping.
+static void DrawDebugArcManuallyCapped(
     const UWorld* InWorld,
-    const FVector& Center,
-    float Radius,
-    const FVector& Axis,
-    const FVector& ForwardVector,
-    float HalfAngleDegrees,
+    const FVector& Center,      // ViewPoint
+    float Radius,               // Intended radial extent of the arc
+    const FVector& Axis,          // Axis of rotation for the arc (e.g., ListenerRight3D)
+    const FVector& ForwardVector, // Central direction of the arc (e.g., ListenerActualForward3D)
+    float HalfAngleDegrees,   // Half of the total arc angle (e.g., VerticalFOV/2)
     int32 NumSegments,
     const FColor& Color,
     float LifeTime,
-    float Thickness
+    float Thickness,
+    float MaxZOffsetUp,       // MaxDistUp from ViewPoint's Z
+    float MaxZOffsetDown      // MaxDistDown from ViewPoint's Z (positive value)
 )
 {
     if (!InWorld || NumSegments <= 0 || Radius < KINDA_SMALL_NUMBER || HalfAngleDegrees < KINDA_SMALL_NUMBER)
     {
         return;
     }
+
+    auto CapVertexZ = [&](FVector VertexToCap) -> FVector
+        {
+            float VertexZRelativeToCenter = VertexToCap.Z - Center.Z;
+            if (VertexZRelativeToCenter > MaxZOffsetUp)
+            {
+                VertexToCap.Z = Center.Z + MaxZOffsetUp;
+            }
+            else if (VertexZRelativeToCenter < -MaxZOffsetDown)
+            {
+                VertexToCap.Z = Center.Z - MaxZOffsetDown;
+            }
+            return VertexToCap;
+        };
+
     const float HalfAngleRad = FMath::DegreesToRadians(HalfAngleDegrees);
     const float AngleStep = (NumSegments > 0 && !FMath::IsNearlyZero(HalfAngleRad * 2.0f))
         ? ((HalfAngleRad * 2.0f) / static_cast<float>(NumSegments))
         : 0.0f;
+
+    FVector StartDirection = ForwardVector.RotateAngleAxisRad(-HalfAngleRad, Axis);
+    FVector LastVertexOnSphere = Center + StartDirection * Radius;
+    FVector LastCappedVertex = CapVertexZ(LastVertexOnSphere);
+
+    if (FMath::IsNearlyZero(AngleStep) && NumSegments > 0)
+    {
+        FVector EndDirection = ForwardVector.RotateAngleAxisRad(HalfAngleRad, Axis);
+        FVector EndVertexOnSphere = Center + EndDirection * Radius;
+        FVector EndCappedVertex = CapVertexZ(EndVertexOnSphere);
+        // For a very small angle, draw a representation of the small capped sector
+        DrawDebugLine(InWorld, CapVertexZ(Center), LastCappedVertex, Color, false, LifeTime, 0, Thickness);
+        DrawDebugLine(InWorld, CapVertexZ(Center), EndCappedVertex, Color, false, LifeTime, 0, Thickness);
+        DrawDebugLine(InWorld, LastCappedVertex, EndCappedVertex, Color, false, LifeTime, 0, Thickness);
+        return;
+    }
+
+    for (int32 i = 1; i <= NumSegments; ++i)
+    {
+        float CurrentRelativeAngleRad = -HalfAngleRad + (static_cast<float>(i) * AngleStep);
+        FVector CurrentDirection = ForwardVector.RotateAngleAxisRad(CurrentRelativeAngleRad, Axis);
+        FVector CurrentVertexOnSphere = Center + CurrentDirection * Radius;
+        FVector CurrentCappedVertex = CapVertexZ(CurrentVertexOnSphere);
+
+        DrawDebugLine(InWorld, LastCappedVertex, CurrentCappedVertex, Color, false, LifeTime, 0, Thickness);
+        LastCappedVertex = CurrentCappedVertex;
+    }
+}
+
+// File-static helper for standard (non-capped) arcs - for horizontal FOV
+static void DrawDebugArcManuallySimple(
+    const UWorld* InWorld, const FVector& Center, float Radius, const FVector& Axis,
+    const FVector& ForwardVector, float HalfAngleDegrees, int32 NumSegments,
+    const FColor& Color, float LifeTime, float Thickness)
+{
+    if (!InWorld || NumSegments <= 0 || Radius < KINDA_SMALL_NUMBER || HalfAngleDegrees < KINDA_SMALL_NUMBER) return;
+    const float HalfAngleRad = FMath::DegreesToRadians(HalfAngleDegrees);
+    const float AngleStep = (NumSegments > 0 && !FMath::IsNearlyZero(HalfAngleRad * 2.0f))
+        ? ((HalfAngleRad * 2.0f) / static_cast<float>(NumSegments)) : 0.0f;
     FVector StartDirection = ForwardVector.RotateAngleAxisRad(-HalfAngleRad, Axis);
     FVector LastVertex = Center + StartDirection * Radius;
     if (FMath::IsNearlyZero(AngleStep) && NumSegments > 0)
@@ -256,84 +115,334 @@ static void DrawDebugArcManually(
     }
 }
 
+
+// Constructor
+UAISense_EnhancedSight::UAISense_EnhancedSight()
+{
+    UE_LOG(LogTemp, Warning, TEXT("EnhancedSight Constructor() called"));
+    RequestImmediateUpdate();
+    NotifyType = EAISenseNotifyType::OnEveryPerception;
+}
+
+// PostInitProperties
+void UAISense_EnhancedSight::PostInitProperties()
+{
+    Super::PostInitProperties();
+    UE_LOG(LogTemp, Warning, TEXT("UAISense_EnhancedSight::PostInitProperties() CALLED"));
+}
+
+// Update is called by the AIPerceptionSystem to perform sight checks.
+float UAISense_EnhancedSight::Update()
+{
+    ProcessSight();
+    return 0.f; // User's current setting.
+}
+
+// Calculates the virtual apex offset for the final FOV cone (for horizontal aspect).
+float UAISense_EnhancedSight::CalculateFovApexOffset(
+    float InitialFovDegrees,
+    float FinalFovDegrees,
+    float ThresholdRadialDistance) const
+{
+    if (ThresholdRadialDistance < KINDA_SMALL_NUMBER ||
+        InitialFovDegrees < KINDA_SMALL_NUMBER || InitialFovDegrees >= 179.9f ||
+        FinalFovDegrees < KINDA_SMALL_NUMBER || FinalFovDegrees >= 179.9f)
+    {
+        return 0.0f;
+    }
+    const float HalfInitialFovRad = FMath::DegreesToRadians(InitialFovDegrees * 0.5f);
+    const float HalfFinalFovRad = FMath::DegreesToRadians(FinalFovDegrees * 0.5f);
+
+    if (FMath::Abs(HalfInitialFovRad - (UE_PI * 0.5f)) < KINDA_SMALL_NUMBER ||
+        FMath::Abs(HalfFinalFovRad - (UE_PI * 0.5f)) < KINDA_SMALL_NUMBER) {
+        return 0.0f;
+    }
+
+    float ActualLastRight = ThresholdRadialDistance * FMath::Sin(HalfInitialFovRad);
+    float ActualLastForward = ThresholdRadialDistance * FMath::Cos(HalfInitialFovRad);
+
+    float ForwardDiff;
+    float TanHalfFinal = FMath::Tan(HalfFinalFovRad);
+    if (FMath::IsNearlyZero(TanHalfFinal))
+    {
+        ForwardDiff = FMath::IsNearlyZero(ActualLastRight) ? ActualLastForward : UE_BIG_NUMBER;
+    }
+    else
+    {
+        ForwardDiff = ActualLastRight / TanHalfFinal;
+    }
+
+    if (ForwardDiff > (UE_BIG_NUMBER / 2.0f)) ForwardDiff = (UE_BIG_NUMBER / 2.0f);
+    else if (ForwardDiff < (-UE_BIG_NUMBER / 2.0f)) ForwardDiff = (-UE_BIG_NUMBER / 2.0f);
+
+    return ActualLastForward - ForwardDiff;
+}
+
+// Checks if a target actor is within the defined Field of View (horizontal and vertical) and range limits.
+bool UAISense_EnhancedSight::IsInFovAndRange(
+    const FVector& ViewPoint,
+    const FVector& ListenerHorizontalForwardNormalized,
+    const FVector& ListenerActualForward3D,
+    const UAISenseConfig_EnhancedSight* SenseConfig,
+    float MaxHorizontalRangeSquared,
+    const AActor* TargetActor,
+    float ThresholdHorizontalDistanceSq,
+    float InitialFovHorizontalDotProduct,
+    float FinalFovHorizontalDotProduct,
+    float CachedApexOffset,
+    float& OutDistanceToTarget3D,
+    FVector& OutDirectionToTarget3DNormalized
+) const
+{
+    if (!TargetActor || !SenseConfig)
+    {
+        return false;
+    }
+
+    const FVector TargetLocation = TargetActor->GetActorLocation();
+    FVector DirectionToTarget3D = TargetLocation - ViewPoint;
+    const float DistanceToTargetSq3D = DirectionToTarget3D.SizeSquared();
+
+    OutDistanceToTarget3D = FMath::Sqrt(DistanceToTargetSq3D);
+    if (OutDistanceToTarget3D < KINDA_SMALL_NUMBER)
+    {
+        OutDirectionToTarget3DNormalized = ListenerActualForward3D;
+        return true;
+    }
+    OutDirectionToTarget3DNormalized = DirectionToTarget3D / OutDistanceToTarget3D;
+
+    // --- Horizontal Range Check ---
+    FVector TargetLocationHorizontal = TargetLocation;
+    TargetLocationHorizontal.Z = ViewPoint.Z;
+    FVector DirectionToTargetHorizontal = TargetLocationHorizontal - ViewPoint;
+    const float DistanceToTargetHorizontalSq = DirectionToTargetHorizontal.SizeSquared();
+
+    if (DistanceToTargetHorizontalSq > MaxHorizontalRangeSquared)
+    {
+        return false;
+    }
+
+    // --- Horizontal FOV Angle Check ---
+    FVector DirectionToTargetHorizontalNormalized = DirectionToTargetHorizontal.GetSafeNormal();
+    bool bIsInHorizontalAngle = true;
+    if (!DirectionToTargetHorizontal.IsNearlyZero())
+    {
+        float RelevantHorizontalDotProduct;
+        FVector OriginForAngleCheckHorizontal = ViewPoint;
+
+        if (DistanceToTargetHorizontalSq <= ThresholdHorizontalDistanceSq)
+        {
+            RelevantHorizontalDotProduct = InitialFovHorizontalDotProduct;
+        }
+        else
+        {
+            RelevantHorizontalDotProduct = FinalFovHorizontalDotProduct;
+            OriginForAngleCheckHorizontal = ViewPoint + ListenerHorizontalForwardNormalized * CachedApexOffset;
+            DirectionToTargetHorizontal = TargetLocationHorizontal - OriginForAngleCheckHorizontal;
+            DirectionToTargetHorizontalNormalized = DirectionToTargetHorizontal.GetSafeNormal();
+            // No 'return true' needed if IsNearlyZero, dot product check will handle it if normalized vector is valid.
+        }
+
+        if (!DirectionToTargetHorizontal.IsNearlyZero())
+        {
+            const float DotProductHorizontal = FVector::DotProduct(ListenerHorizontalForwardNormalized, DirectionToTargetHorizontalNormalized);
+            bIsInHorizontalAngle = DotProductHorizontal >= RelevantHorizontalDotProduct;
+        }
+    }
+
+    if (!bIsInHorizontalAngle)
+    {
+        return false;
+    }
+
+    // --- Vertical Distance Limits Check (MaxDistUp / MaxDistDown) ---
+    const float VerticalOffsetToTarget = TargetLocation.Z - ViewPoint.Z;
+    if (VerticalOffsetToTarget > SenseConfig->MaxDistUp || VerticalOffsetToTarget < -SenseConfig->MaxDistDown)
+    {
+        return false;
+    }
+
+    // --- Vertical FOV Angle Check ---
+    const float DotProductVertical = FVector::DotProduct(ListenerActualForward3D, OutDirectionToTarget3DNormalized);
+    const float RequiredDotVertical = FMath::Cos(FMath::DegreesToRadians(SenseConfig->VerticalPeripheralVisionAngle * 0.5f));
+
+    if (DotProductVertical < RequiredDotVertical)
+    {
+        return false;
+    }
+
+    return true; // Passed all checks
+}
+
+// Checks for a direct line of sight.
+bool UAISense_EnhancedSight::HasLineOfSight(
+    const UWorld* World,
+    const FVector& ViewPoint,
+    const AActor* TargetActor,
+    const AActor* IgnoredActorForTrace
+) const
+{
+    if (!World || !TargetActor) return false;
+    FHitResult HitResult;
+    FCollisionQueryParams QueryParams;
+    QueryParams.AddIgnoredActor(IgnoredActorForTrace);
+    const FVector TargetLocation = TargetActor->GetActorLocation();
+    bool bHit = World->LineTraceSingleByChannel(HitResult, ViewPoint, TargetLocation, ECC_Visibility, QueryParams);
+    return !bHit || (HitResult.GetActor() == TargetActor);
+}
+
+
+// Draws the debug visualization for the enhanced FOV.
 void UAISense_EnhancedSight::DrawDebugEnhancedFov(
     const UWorld* World,
     const FVector& ViewPoint,
     const FVector& ListenerHorizontalForward,
-    float InitialFovDegrees,
-    float FinalFovDegrees,
-    float ThresholdHorizontalDist,
-    float SightRadiusFromConfig,
-    float LoseSightRadiusFromConfig,
+    const FVector& ListenerActualForward3D,
+    const UAISenseConfig_EnhancedSight* SenseConfig,
     float CachedApexOffset,
-    bool  DrawDebug) const
+    const AActor* ListenerActorForDebug // Used for robust RightVector
+) const
 {
-
-    if (!DrawDebug) return;
+    if (!SenseConfig || !SenseConfig->bDrawDebug || !World) return;
 
     const FColor InitialFovColor = FColor::Green;
     const FColor LoseSightRadiusColor = FColor::Orange;
     const FColor SightRadiusDisplayColor = InitialFovColor;
+    const FColor VerticalFovDebugColor = FColor::Yellow;
 
     const float DebugLifeTime = 0.0f;
     const float Thickness = 1.0f;
     const int32 ArcSegments = 24;
-    const FVector RotationAxis = FVector::UpVector;
+    const FVector HorizontalRotationAxis = FVector::UpVector;
 
-    // 1. Draw Initial FOV Segment
+    // Extract parameters from SenseConfig for convenience
+    const float InitialFovDegrees = SenseConfig->PeripheralVisionAngle;
+    const float FinalFovDegrees = SenseConfig->FinalPeripheralVisionAngle;
+    const float ThresholdHorizontalDist = SenseConfig->FinalPeripheralVisionAngleThreesholdDistance;
+    const float SightRadiusFromConfig = SenseConfig->SightRadius;
+    const float LoseSightRadiusFromConfig = SenseConfig->LoseSightRadius;
+    const float VerticalFovDegrees = SenseConfig->VerticalPeripheralVisionAngle;
+    const float MaxDistUp = SenseConfig->MaxDistUp;
+    const float MaxDistDown = SenseConfig->MaxDistDown;
+
+    // --- 1. Draw Horizontal FOV ---
     float HalfInitialFovDeg = InitialFovDegrees * 0.5f;
-    FVector LeftEdgeDirInitial = ListenerHorizontalForward.RotateAngleAxis(-HalfInitialFovDeg, RotationAxis);
-    FVector RightEdgeDirInitial = ListenerHorizontalForward.RotateAngleAxis(HalfInitialFovDeg, RotationAxis);
+    FVector LeftEdgeDirInitial = ListenerHorizontalForward.RotateAngleAxis(-HalfInitialFovDeg, HorizontalRotationAxis);
+    FVector RightEdgeDirInitial = ListenerHorizontalForward.RotateAngleAxis(HalfInitialFovDeg, HorizontalRotationAxis);
     FVector LeftEdgeEndInitial_AtThreshold = ViewPoint + LeftEdgeDirInitial * ThresholdHorizontalDist;
     FVector RightEdgeEndInitial_AtThreshold = ViewPoint + RightEdgeDirInitial * ThresholdHorizontalDist;
 
     DrawDebugLine(World, ViewPoint, LeftEdgeEndInitial_AtThreshold, InitialFovColor, false, DebugLifeTime, 0, Thickness);
     DrawDebugLine(World, ViewPoint, RightEdgeEndInitial_AtThreshold, InitialFovColor, false, DebugLifeTime, 0, Thickness);
-    DrawDebugArcManually(World, ViewPoint, ThresholdHorizontalDist, RotationAxis, ListenerHorizontalForward, HalfInitialFovDeg, ArcSegments, InitialFovColor, DebugLifeTime, Thickness);
+    DrawDebugArcManuallySimple(World, ViewPoint, ThresholdHorizontalDist, HorizontalRotationAxis, ListenerHorizontalForward, HalfInitialFovDeg, ArcSegments, InitialFovColor, DebugLifeTime, Thickness);
 
-    // 2. Draw Extended FOV Segment
     FVector VirtualOriginFinalFov = ViewPoint + ListenerHorizontalForward * CachedApexOffset;
     float HalfFinalFovDeg = FinalFovDegrees * 0.5f;
-
-    FVector LeftEdgeEnd_AtSightRadius_FromViewPoint = ViewPoint + ListenerHorizontalForward.RotateAngleAxis(-HalfFinalFovDeg, RotationAxis) * SightRadiusFromConfig;
-    FVector RightEdgeEnd_AtSightRadius_FromViewPoint = ViewPoint + ListenerHorizontalForward.RotateAngleAxis(HalfFinalFovDeg, RotationAxis) * SightRadiusFromConfig;
+    FVector LeftEdgeEnd_AtSightRadius_FromViewPoint = ViewPoint + ListenerHorizontalForward.RotateAngleAxis(-HalfFinalFovDeg, HorizontalRotationAxis) * SightRadiusFromConfig;
+    FVector RightEdgeEnd_AtSightRadius_FromViewPoint = ViewPoint + ListenerHorizontalForward.RotateAngleAxis(HalfFinalFovDeg, HorizontalRotationAxis) * SightRadiusFromConfig;
 
     DrawDebugLine(World, LeftEdgeEndInitial_AtThreshold, LeftEdgeEnd_AtSightRadius_FromViewPoint, SightRadiusDisplayColor, false, DebugLifeTime, 0, Thickness);
     DrawDebugLine(World, RightEdgeEndInitial_AtThreshold, RightEdgeEnd_AtSightRadius_FromViewPoint, SightRadiusDisplayColor, false, DebugLifeTime, 0, Thickness);
-    DrawDebugArcManually(World, ViewPoint, SightRadiusFromConfig, RotationAxis, ListenerHorizontalForward, HalfFinalFovDeg, ArcSegments, SightRadiusDisplayColor, DebugLifeTime, Thickness);
+    DrawDebugArcManuallySimple(World, ViewPoint, SightRadiusFromConfig, HorizontalRotationAxis, ListenerHorizontalForward, HalfFinalFovDeg, ArcSegments, SightRadiusDisplayColor, DebugLifeTime, Thickness);
 
     if (LoseSightRadiusFromConfig > SightRadiusFromConfig)
     {
-        FVector LeftEdgeEnd_AtLoseRadius_FromViewPoint = ViewPoint + ListenerHorizontalForward.RotateAngleAxis(-HalfFinalFovDeg, RotationAxis) * LoseSightRadiusFromConfig;
-        FVector RightEdgeEnd_AtLoseRadius_FromViewPoint = ViewPoint + ListenerHorizontalForward.RotateAngleAxis(HalfFinalFovDeg, RotationAxis) * LoseSightRadiusFromConfig;
-
+        FVector LeftEdgeEnd_AtLoseRadius_FromViewPoint = ViewPoint + ListenerHorizontalForward.RotateAngleAxis(-HalfFinalFovDeg, HorizontalRotationAxis) * LoseSightRadiusFromConfig;
+        FVector RightEdgeEnd_AtLoseRadius_FromViewPoint = ViewPoint + ListenerHorizontalForward.RotateAngleAxis(HalfFinalFovDeg, HorizontalRotationAxis) * LoseSightRadiusFromConfig;
         DrawDebugLine(World, LeftEdgeEnd_AtSightRadius_FromViewPoint, LeftEdgeEnd_AtLoseRadius_FromViewPoint, LoseSightRadiusColor, false, DebugLifeTime, 0, Thickness * 0.7f);
         DrawDebugLine(World, RightEdgeEnd_AtSightRadius_FromViewPoint, RightEdgeEnd_AtLoseRadius_FromViewPoint, LoseSightRadiusColor, false, DebugLifeTime, 0, Thickness * 0.7f);
-        DrawDebugArcManually(World, ViewPoint, LoseSightRadiusFromConfig, RotationAxis, ListenerHorizontalForward, HalfFinalFovDeg, ArcSegments, LoseSightRadiusColor, DebugLifeTime, Thickness * 0.7f);
+        DrawDebugArcManuallySimple(World, ViewPoint, LoseSightRadiusFromConfig, HorizontalRotationAxis, ListenerHorizontalForward, HalfFinalFovDeg, ArcSegments, LoseSightRadiusColor, DebugLifeTime, Thickness * 0.7f);
     }
-
     if (FMath::Abs(CachedApexOffset) > KINDA_SMALL_NUMBER)
     {
         DrawDebugPoint(World, VirtualOriginFinalFov, 15.f, FColor::Magenta, false, DebugLifeTime);
     }
+
+    // --- 2. Draw Vertical FOV with "Cut and Forward" Lines ---
+    FVector ListenerRight3D_Calculated;
+    if (ListenerActorForDebug)
+    {
+        if (FMath::Abs(FVector::DotProduct(ListenerActualForward3D, FVector::UpVector)) > 0.99f)
+        {
+            ListenerRight3D_Calculated = ListenerActorForDebug->GetActorRightVector();
+        }
+        else
+        {
+            ListenerRight3D_Calculated = FVector::CrossProduct(ListenerActualForward3D, ListenerActorForDebug->GetActorUpVector()).GetSafeNormal();
+            if (ListenerRight3D_Calculated.IsNearlyZero()) ListenerRight3D_Calculated = ListenerActorForDebug->GetActorRightVector();
+        }
+    }
+    else {
+        ListenerRight3D_Calculated = FVector::CrossProduct(FVector::UpVector, ListenerActualForward3D).GetSafeNormal();
+        if (ListenerRight3D_Calculated.IsNearlyZero()) ListenerRight3D_Calculated = FVector(0.f, 1.f, 0.f);
+    }
+
+    float HalfVerticalFovDeg = VerticalFovDegrees * 0.5f;
+    float VerticalDrawExtent = SightRadiusFromConfig; // Max length for vertical FOV edge lines
+
+    // Top Edge
+    FVector TopEdgeDir = ListenerActualForward3D.RotateAngleAxis(HalfVerticalFovDeg, ListenerRight3D_Calculated).GetSafeNormal();
+    FVector TopEndPoint_NoLimit = ViewPoint + TopEdgeDir * VerticalDrawExtent;
+    FVector ActualTopVisualEndPoint = TopEndPoint_NoLimit;
+
+    if (TopEdgeDir.Z > KINDA_SMALL_NUMBER && MaxDistUp > 0)
+    {
+        float DistToCeilingPlane = MaxDistUp / TopEdgeDir.Z;
+        if (DistToCeilingPlane > 0 && DistToCeilingPlane < VerticalDrawExtent)
+        {
+            FVector IntersectionPointCeiling = ViewPoint + TopEdgeDir * DistToCeilingPlane;
+            DrawDebugLine(World, ViewPoint, IntersectionPointCeiling, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f);
+            ActualTopVisualEndPoint = FVector(TopEndPoint_NoLimit.X, TopEndPoint_NoLimit.Y, IntersectionPointCeiling.Z);
+            DrawDebugLine(World, IntersectionPointCeiling, ActualTopVisualEndPoint, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f);
+        }
+        else { DrawDebugLine(World, ViewPoint, ActualTopVisualEndPoint, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f); }
+    }
+    else { DrawDebugLine(World, ViewPoint, ActualTopVisualEndPoint, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f); }
+
+    // Bottom Edge
+    FVector BottomEdgeDir = ListenerActualForward3D.RotateAngleAxis(-HalfVerticalFovDeg, ListenerRight3D_Calculated).GetSafeNormal();
+    FVector BottomEndPoint_NoLimit = ViewPoint + BottomEdgeDir * VerticalDrawExtent;
+    FVector ActualBottomVisualEndPoint = BottomEndPoint_NoLimit;
+
+    if (BottomEdgeDir.Z < -KINDA_SMALL_NUMBER && MaxDistDown > 0)
+    {
+        float DistToFloorPlane = -MaxDistDown / BottomEdgeDir.Z;
+        if (DistToFloorPlane > 0 && DistToFloorPlane < VerticalDrawExtent)
+        {
+            FVector IntersectionPointFloor = ViewPoint + BottomEdgeDir * DistToFloorPlane;
+            DrawDebugLine(World, ViewPoint, IntersectionPointFloor, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f);
+            ActualBottomVisualEndPoint = FVector(BottomEndPoint_NoLimit.X, BottomEndPoint_NoLimit.Y, IntersectionPointFloor.Z);
+            DrawDebugLine(World, IntersectionPointFloor, ActualBottomVisualEndPoint, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f);
+        }
+        else { DrawDebugLine(World, ViewPoint, ActualBottomVisualEndPoint, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f); }
+    }
+    else { DrawDebugLine(World, ViewPoint, ActualBottomVisualEndPoint, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f); }
+
+    // Use the new Capped Arc for vertical FOV visualization
+    DrawDebugArcManuallyCapped(
+        World, ViewPoint, VerticalDrawExtent, ListenerRight3D_Calculated, ListenerActualForward3D,
+        HalfVerticalFovDeg, ArcSegments, VerticalFovDebugColor, DebugLifeTime, Thickness * 0.8f,
+        MaxDistUp, MaxDistDown);
+
+    // MaxDistUp/Down horizontal indicator lines
+    float IndicationLineLength = 100.0f;
+    FVector UpLimitVisualCenter = ViewPoint + FVector(0, 0, MaxDistUp);
+    FVector DownLimitVisualCenter = ViewPoint - FVector(0, 0, MaxDistDown);
+    FVector HorizontalRightIndicator = FVector::CrossProduct(FVector::UpVector, ListenerHorizontalForward).GetSafeNormal();
+    if (HorizontalRightIndicator.IsNearlyZero()) HorizontalRightIndicator = FVector(0, 1, 0);
+
+    DrawDebugLine(World, UpLimitVisualCenter - HorizontalRightIndicator * IndicationLineLength, UpLimitVisualCenter + HorizontalRightIndicator * IndicationLineLength, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.5f);
+    DrawDebugLine(World, DownLimitVisualCenter - HorizontalRightIndicator * IndicationLineLength, DownLimitVisualCenter + HorizontalRightIndicator * IndicationLineLength, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.5f);
 }
 
-
+// Main perception processing function.
 void UAISense_EnhancedSight::ProcessSight()
 {
     UWorld* World = GetWorld();
-    if (!World)
-    {
-        return;
-    }
-
-    const bool bDrawDebugFov = true; // Sigue siendo el control maestro aquí
+    if (!World) return;
 
     AIPerception::FListenerMap* Listeners = GetListeners();
-    if (!Listeners || Listeners->Num() == 0)
-    {
-        return;
-    }
+    if (!Listeners || Listeners->Num() == 0) return;
 
     for (AIPerception::FListenerMap::TIterator ListenerIt(*Listeners); ListenerIt; ++ListenerIt)
     {
@@ -341,53 +450,39 @@ void UAISense_EnhancedSight::ProcessSight()
         const AActor* ListenerActor = Listener.GetBodyActor();
         UAIPerceptionComponent* PerceptionComponent = Listener.Listener.Get();
 
-        if (!ListenerActor || !PerceptionComponent)
-        {
-            continue;
-        }
+        if (!ListenerActor || !PerceptionComponent) continue;
 
         const UAISenseConfig_EnhancedSight* MyConfig = Cast<const UAISenseConfig_EnhancedSight>(PerceptionComponent->GetSenseConfig(GetSenseID()));
+        if (!MyConfig) continue;
 
-        if (!MyConfig)
-        {
-            continue;
-        }
-
-        // Parámetros de Configuración del FOV (sin cambios)
+        // Pre-calculate common values for this listener
         const float InitialFovDegrees = MyConfig->PeripheralVisionAngle;
         const float FinalFovDegrees = MyConfig->FinalPeripheralVisionAngle;
         const float ThresholdHorizontalDist = MyConfig->FinalPeripheralVisionAngleThreesholdDistance;
         const float SightRadiusFromConfig = MyConfig->SightRadius;
         const float LoseSightRadiusFromConfig = MyConfig->LoseSightRadius;
 
-        // Pre-cálculos (sin cambios)
         const float ThresholdHorizontalDistSq = FMath::Square(ThresholdHorizontalDist);
         const float InitialFovHorizontalDot = FMath::Cos(FMath::DegreesToRadians(InitialFovDegrees * 0.5f));
         const float FinalFovHorizontalDot = FMath::Cos(FMath::DegreesToRadians(FinalFovDegrees * 0.5f));
+        const float CachedApexOffset = CalculateFovApexOffset(InitialFovDegrees, FinalFovDegrees, ThresholdHorizontalDist);
 
-        const float CachedApexOffset = CalculateFovApexOffset(
-            InitialFovDegrees,
-            FinalFovDegrees,
-            ThresholdHorizontalDist
-        );
-
-        // ViewPoint y ListenerForward (sin cambios)
         FVector ViewPoint;
-        FVector ListenerForward3D;
+        FVector ListenerActualForward3D;
         APawn* ListenerPawn = Cast<APawn>(const_cast<AActor*>(ListenerActor));
         if (ListenerPawn)
         {
             FRotator ViewRotation;
             ListenerPawn->GetActorEyesViewPoint(ViewPoint, ViewRotation);
-            ListenerForward3D = ViewRotation.Vector();
+            ListenerActualForward3D = ViewRotation.Vector();
         }
         else
         {
             ViewPoint = ListenerActor->GetActorLocation();
-            ListenerForward3D = ListenerActor->GetActorForwardVector();
+            ListenerActualForward3D = ListenerActor->GetActorForwardVector();
         }
 
-        FVector ListenerHorizontalForward = ListenerForward3D;
+        FVector ListenerHorizontalForward = ListenerActualForward3D;
         ListenerHorizontalForward.Z = 0.0f;
         if (!ListenerHorizontalForward.Normalize())
         {
@@ -398,32 +493,21 @@ void UAISense_EnhancedSight::ProcessSight()
             }
         }
 
-        if (bDrawDebugFov && World) // El control maestro sigue aquí
-        {
-            DrawDebugEnhancedFov(
-                World,
-                ViewPoint,
-                ListenerHorizontalForward,
-                InitialFovDegrees,
-                FinalFovDegrees,
-                ThresholdHorizontalDist,
-                SightRadiusFromConfig,
-                LoseSightRadiusFromConfig,
-                CachedApexOffset,
-                MyConfig->bDrawDebug
-            );
-        }
+        // Call debug drawing function
+        DrawDebugEnhancedFov(
+            World,
+            ViewPoint,
+            ListenerHorizontalForward,
+            ListenerActualForward3D,
+            MyConfig, // Pass the whole config for drawing parameters
+            CachedApexOffset,
+            ListenerActor // Pass ListenerActor for robust RightVector in debug
+        );
 
-        // Bucle de Objetivos y Lógica de Percepción (sin cambios)
         for (TActorIterator<APawn> TargetIt(World); TargetIt; ++TargetIt)
         {
             APawn* TargetActorAsPawn = *TargetIt;
-
-            if (!TargetActorAsPawn || TargetActorAsPawn == ListenerActor)
-            {
-                continue;
-            }
-
+            if (!TargetActorAsPawn || TargetActorAsPawn == ListenerActor) continue;
             AActor* TargetActor = TargetActorAsPawn;
 
             const FActorPerceptionInfo* TargetPerceptionInfo = PerceptionComponent->GetActorInfo(*TargetActor);
@@ -448,28 +532,30 @@ void UAISense_EnhancedSight::ProcessSight()
             }
             const float MaxRangeSqForCheck = FMath::Square(RangeToCheckThisFrame);
 
-            float DistanceToTarget;
-            FVector DirectionToTarget;
+            float DistanceToTarget3D;
+            FVector DirectionToTarget3DNormalized;
 
-            bool bIsInFovAndRange = IsInFovAndRange(
+            bool bPassesAllChecks = IsInFovAndRange(
                 ViewPoint,
                 ListenerHorizontalForward,
+                ListenerActualForward3D,
+                MyConfig, // Pass config to IsInFovAndRange
                 MaxRangeSqForCheck,
                 TargetActor,
                 ThresholdHorizontalDistSq,
                 InitialFovHorizontalDot,
                 FinalFovHorizontalDot,
                 CachedApexOffset,
-                DistanceToTarget,
-                DirectionToTarget
+                DistanceToTarget3D,
+                DirectionToTarget3DNormalized
             );
 
-            bool bCurrentlyHasLineOfSight = false;
-            if (bIsInFovAndRange)
+            bool bHasLineOfSightToTarget = false;
+            if (bPassesAllChecks)
             {
-                bCurrentlyHasLineOfSight = HasLineOfSight(World, ViewPoint, TargetActor, ListenerActor);
+                bHasLineOfSightToTarget = HasLineOfSight(World, ViewPoint, TargetActor, ListenerActor);
             }
-            const bool bIsCurrentlyVisible = bIsInFovAndRange && bCurrentlyHasLineOfSight;
+            const bool bIsCurrentlyVisible = bPassesAllChecks && bHasLineOfSightToTarget;
 
             FAIStimulus::FResult CurrentSenseResult = bIsCurrentlyVisible ? FAIStimulus::SensingSucceeded : FAIStimulus::SensingFailed;
             bool bShouldReportStimulus = false;

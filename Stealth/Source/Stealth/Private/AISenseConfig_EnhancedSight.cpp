@@ -11,8 +11,10 @@ UAISenseConfig_EnhancedSight::UAISenseConfig_EnhancedSight()
     PeripheralVisionAngle = 160.0f;
     FinalPeripheralVisionAngle = 90.0f;
     FinalPeripheralVisionAngleThreesholdDistance = 1000.0f;
-    MaxDistUp = 500.0f; 
-    MaxDistDown = 500.0f;
+
+    VerticalPeripheralVisionAngle = 170.0f;
+    MaxDistUp = 1000.0f;                  
+    MaxDistDown = 1000.0f;
 
     bDrawDebug = true;
 }

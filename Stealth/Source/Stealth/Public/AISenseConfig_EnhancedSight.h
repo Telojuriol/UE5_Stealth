@@ -38,6 +38,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sense", meta = (UIMin = "0.0"))
     float FinalPeripheralVisionAngleThreesholdDistance; // Typo mantenido por consistencia con tu código
 
+    /** Vertical peripheral vision angle in degrees (total cone angle). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sense", meta = (UIMin = "0.0", UIMax = "180.0")) // Max 180 para vertical
+    float VerticalPeripheralVisionAngle;
+
     /** Maximum vertical distance upwards the pawn can see. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sense", meta = (UIMin = "0.0"))
     float MaxDistUp;
