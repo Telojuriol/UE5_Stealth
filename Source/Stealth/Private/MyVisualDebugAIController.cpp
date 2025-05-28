@@ -2,7 +2,7 @@
 
 #include "MyVisualDebugAIController.h"
 #include "Perception/AIPerceptionComponent.h"
-#include "Perception/AISenseConfig_Sight.h"
+#include "Perception/AISenseConfig_Sight.h" 
 #include "Perception/AIPerceptionSystem.h"
 #include "Perception/AISense_Sight.h"
 #include "DrawDebugHelpers.h"
@@ -10,14 +10,16 @@
 #include "GameFramework/Pawn.h"
 #include "Kismet/GameplayStatics.h" 
 #include "CollisionQueryParams.h"
+#include "GameFramework/Controller.h"
 
+// ... (El constructor y otras funciones como BeginPlay, OnPossess, OnTargetPerceptionUpdated permanecen igual que en la versión anterior) ...
 AMyVisualDebugAIController::AMyVisualDebugAIController()
 {
     PrimaryActorTick.bCanEverTick = true;
 
     AIPerceptionComponent = CreateDefaultSubobject<UAIPerceptionComponent>(TEXT("AIPerceptionComp"));
-    SightConfig = CreateDefaultSubobject<UAISenseConfig_Sight>(TEXT("SightConfig"));
 
+    SightConfig = CreateDefaultSubobject<UAISenseConfig_Sight>(TEXT("SightConfig"));
     if (SightConfig)
     {
         SightConfig->SightRadius = 1500.0f;
@@ -28,14 +30,12 @@ AMyVisualDebugAIController::AMyVisualDebugAIController()
         SightConfig->DetectionByAffiliation.bDetectNeutrals = true;
         SightConfig->DetectionByAffiliation.bDetectFriendlies = true;
 
-        if (AIPerceptionComponent) // Asegurarse de que AIPerceptionComponent es válido antes de usarlo
+        if (AIPerceptionComponent)
         {
             AIPerceptionComponent->ConfigureSense(*SightConfig);
             AIPerceptionComponent->SetDominantSense(SightConfig->GetSenseImplementation());
         }
     }
-
-    FocusedTarget = nullptr;
 }
 
 void AMyVisualDebugAIController::BeginPlay()
@@ -58,20 +58,9 @@ void AMyVisualDebugAIController::OnPossess(APawn* InPawn)
 
 void AMyVisualDebugAIController::OnTargetPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus)
 {
-    if (!Actor) return;
-
-    if (Stimulus.Type == UAISense::GetSenseID<UAISense_Sight>())
-    {
-        if (Stimulus.WasSuccessfullySensed())
-        {
-            // FocusedTarget = Actor; // Comentado o usado para lógica de IA, no para este debug visual
-        }
-        else
-        {
-            // if (Actor == FocusedTarget) { FocusedTarget = nullptr; }
-        }
-    }
+    // Lógica de IA o depuración adicional si es necesario
 }
+
 
 void AMyVisualDebugAIController::Tick(float DeltaTime)
 {
@@ -80,26 +69,36 @@ void AMyVisualDebugAIController::Tick(float DeltaTime)
     APawn* ControlledPawn = GetPawn();
     UWorld* World = GetWorld();
 
-    // --- 1. Dibujar Cono de FOV (Campo de Visión) ---
-    if (ControlledPawn && SightConfig && World) // AIPerceptionComponent no es estrictamente necesario aquí si GetActorEyesViewPoint es del controller/pawn
+    if (!ControlledPawn || !World) return;
+
+    FVector CurrentViewPoint;
+    FRotator CurrentViewRotation;
+    AController* PawnController = ControlledPawn->GetController();
+
+    if (ControlledPawn->IsPlayerControlled() && PawnController)
     {
-        FVector FOVOrigin;
-        FRotator FOVEyeRotation;
-        // Obtener el punto de vista de los "ojos" para el origen del cono de visión
-        this->GetActorEyesViewPoint(FOVOrigin, FOVEyeRotation);
-        // Alternativamente, si los ojos están definidos por el Pawn:
-        // ControlledPawn->GetActorEyesViewPoint(FOVOrigin, FOVEyeRotation);
+        PawnController->GetPlayerViewPoint(CurrentViewPoint, CurrentViewRotation);
+    }
+    else
+    {
+        ControlledPawn->GetActorEyesViewPoint(CurrentViewPoint, CurrentViewRotation);
+    }
 
-        const FVector FOVForwardVector = FOVEyeRotation.Vector(); // Dirección "adelante" de los ojos
-        // Usar el vector "arriba" de la rotación de los ojos para que el cono se incline con la mirada.
-        // Si quieres que el cono siempre se abra horizontalmente respecto al Pawn, usa: ControlledPawn->GetActorUpVector();
+    const UAISenseConfig_Sight* CurrentSightConfig = SightConfig;
+
+    // --- 1. Dibujar Cono de FOV (Campo de Visión) Simple ---
+    if (CurrentSightConfig)
+    {
+        const FVector FOVOrigin = CurrentViewPoint;
+        const FRotator FOVEyeRotation = CurrentViewRotation;
+        const FVector FOVForwardVector = FOVEyeRotation.Vector();
         const FVector FOVUpVector = FOVEyeRotation.Quaternion().GetUpVector();
-        const float Radius = SightConfig->SightRadius;
+        const float Radius = CurrentSightConfig->SightRadius;
+        const float PeripheralVisionAngle = CurrentSightConfig->PeripheralVisionAngleDegrees;
 
-        FVector LeftDir = FOVForwardVector.RotateAngleAxis(-SightConfig->PeripheralVisionAngleDegrees / 2.0f, FOVUpVector);
-        FVector RightDir = FOVForwardVector.RotateAngleAxis(SightConfig->PeripheralVisionAngleDegrees / 2.0f, FOVUpVector);
+        FVector LeftDir = FOVForwardVector.RotateAngleAxis(-PeripheralVisionAngle / 2.0f, FOVUpVector);
+        FVector RightDir = FOVForwardVector.RotateAngleAxis(PeripheralVisionAngle / 2.0f, FOVUpVector);
 
-        // Usar FOVOrigin como el punto de inicio de las líneas del cono
         FVector LeftEndPoint = FOVOrigin + LeftDir * Radius;
         FVector RightEndPoint = FOVOrigin + RightDir * Radius;
 
@@ -111,9 +110,9 @@ void AMyVisualDebugAIController::Tick(float DeltaTime)
         for (int32 i = 1; i <= ArcSegments; ++i)
         {
             float CurrentAngleFraction = static_cast<float>(i) / static_cast<float>(ArcSegments);
-            float AngleDegrees = -SightConfig->PeripheralVisionAngleDegrees / 2.0f + SightConfig->PeripheralVisionAngleDegrees * CurrentAngleFraction;
+            float AngleDegrees = -PeripheralVisionAngle / 2.0f + PeripheralVisionAngle * CurrentAngleFraction;
             FVector ArcDir = FOVForwardVector.RotateAngleAxis(AngleDegrees, FOVUpVector);
-            FVector CurrentArcPoint = FOVOrigin + ArcDir * Radius; // El arco también se origina desde FOVOrigin
+            FVector CurrentArcPoint = FOVOrigin + ArcDir * Radius;
             DrawDebugLine(World, PrevArcPoint, CurrentArcPoint, VisionConeColor, false, 0.0f, 0, VisionConeLineThickness);
             PrevArcPoint = CurrentArcPoint;
         }
@@ -122,20 +121,17 @@ void AMyVisualDebugAIController::Tick(float DeltaTime)
     // --- 2. Dibujar LineTrace constante al Jugador si está en FOV ---
     APawn* PlayerPawn = PlayerPawnPtr.Get();
 
-    // Usamos IsPendingKillPending() que está en Actor.h y debería compilar bien para AActor y APawn.
     if (PlayerPawn && PlayerPawn->IsValidLowLevel() && !PlayerPawn->IsPendingKillPending())
     {
-        // Asegurarse de que los componentes necesarios para la IA y el mundo son válidos
-        if (ControlledPawn && SightConfig && World) // AIPerceptionComponent no es estrictamente necesario para this->GetActorEyesViewPoint
+        if (CurrentSightConfig)
         {
-            FVector AILineTraceOrigin_EyeLocation;
-            FRotator AILineTraceOrigin_EyeRotation;
-            this->GetActorEyesViewPoint(AILineTraceOrigin_EyeLocation, AILineTraceOrigin_EyeRotation);
+            FVector AILineTraceOrigin_EyeLocation = CurrentViewPoint;
+            FRotator AILineTraceOrigin_EyeRotation = CurrentViewRotation;
 
             FVector PlayerLocation = PlayerPawn->GetActorLocation();
             FVector DirectionToPlayerRaw = PlayerLocation - AILineTraceOrigin_EyeLocation;
 
-            if (DirectionToPlayerRaw.SizeSquared() <= FMath::Square(SightConfig->SightRadius))
+            if (DirectionToPlayerRaw.SizeSquared() <= FMath::Square(CurrentSightConfig->SightRadius))
             {
                 FVector AIForwardVectorForLoS = AILineTraceOrigin_EyeRotation.Vector();
                 FVector DirectionToPlayerNormalized = DirectionToPlayerRaw.GetSafeNormal();
@@ -143,10 +139,10 @@ void AMyVisualDebugAIController::Tick(float DeltaTime)
                 DotProduct = FMath::Clamp(DotProduct, -1.0f, 1.0f);
                 float AngleToPlayerDegrees = FMath::RadiansToDegrees(FMath::Acos(DotProduct));
 
-                if (AngleToPlayerDegrees <= SightConfig->PeripheralVisionAngleDegrees / 2.0f)
+                if (AngleToPlayerDegrees <= CurrentSightConfig->PeripheralVisionAngleDegrees / 2.0f)
                 {
                     FHitResult HitResult;
-                    FCollisionQueryParams TraceParams(FName(TEXT("PlayerVisibilityTrace")), true, ControlledPawn);
+                    FCollisionQueryParams TraceParams(FName(TEXT("PlayerVisibilityDebugTrace")), true, ControlledPawn);
                     TraceParams.bTraceComplex = false;
 
                     bool bHit = World->LineTraceSingleByChannel(
@@ -161,16 +157,20 @@ void AMyVisualDebugAIController::Tick(float DeltaTime)
                     {
                         if (HitResult.GetActor() == PlayerPawn)
                         {
+                            // El rayo golpeó directamente al jugador
                             DrawDebugLine(World, AILineTraceOrigin_EyeLocation, HitResult.Location, LoSClearColor, false, 0.0f, 0, LoSTraceThickness);
                         }
                         else
                         {
+                            // El rayo golpeó un obstáculo.
+                            // Dibuja la línea SOLO hasta el punto de impacto del obstáculo.
                             DrawDebugLine(World, AILineTraceOrigin_EyeLocation, HitResult.Location, LoSObstacleColor, false, 0.0f, 0, LoSTraceThickness);
-                            DrawDebugLine(World, HitResult.Location, PlayerLocation, LoSOccludedPathColor, false, 0.0f, 0, LoSTraceThickness * 0.7f);
+                            // SE HA ELIMINADO LA LÍNEA QUE IBA DESDE EL OBSTÁCULO AL JUGADOR
                         }
                     }
                     else
                     {
+                        // El rayo no golpeó nada (camino despejado hacia la ubicación del jugador)
                         DrawDebugLine(World, AILineTraceOrigin_EyeLocation, PlayerLocation, LoSClearColor, false, 0.0f, 0, LoSTraceThickness);
                     }
                 }
