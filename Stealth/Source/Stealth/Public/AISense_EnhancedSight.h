@@ -7,42 +7,58 @@
 UCLASS(ClassGroup = AI)
 class STEALTH_API UAISense_EnhancedSight : public UAISense
 {
-   GENERATED_BODY()
+    GENERATED_BODY()
 
 public:
-   UAISense_EnhancedSight();
+    UAISense_EnhancedSight();
 
-   virtual float Update() override;
-
-   virtual void PostInitProperties() override;
+    virtual float Update() override;
+    virtual void PostInitProperties() override;
 
 private:
-   void ProcessSight();
-
-protected: // O public, según cómo se llame desde ProcessSight
-    bool IsInFovAndRange(
-        const FVector& ViewPoint,
-        const FVector& ListenerHorizontalForwardNormalized, // Vector adelante del listener, ya aplanado y normalizado
-        float MaxRangeSquared,                      // Rango máximo al cuadrado para evitar Sqrt
-        const AActor* TargetActor,
-        float ThresholdHorizontalDistanceSq,        // Distancia umbral horizontal al cuadrado
-        float InitialFovHorizontalDotProduct,       // cos(InitialFOV_degrees / 2)
-        float FinalFovHorizontalDotProduct,         // cos(FinalFOV_degrees / 2)
-        float CachedApexOffset,                     // El 'diff' precalculado
-        float& OutDistanceToTarget,                 // Salida: Distancia 3D
-        FVector& OutDirectionToTargetNormalized     // Salida: Dirección 3D normalizada
-    ) const;
+    void ProcessSight();
 
     float CalculateFovApexOffset(
         float InitialFovDegrees,
         float FinalFovDegrees,
         float ThresholdHorizontalDistance) const;
 
-    // Devuelve true si hay una línea de visión directa desde ViewPoint hasta TargetActor.
+    // Nueva función para dibujar el FOV de debug
+    void DrawDebugEnhancedFov(
+        const UWorld* World,
+        const FVector& ViewPoint,
+        const FVector& ListenerHorizontalForward,
+        float InitialFovDegrees,
+        float FinalFovDegrees,
+        float ThresholdHorizontalDist,
+        float SightRadiusFromConfig,
+        float LoseSightRadiusFromConfig,
+        float CachedApexOffset,
+        bool  DrawDebug
+    ) const; // Marcada como const ya que no modifica el estado del sentido
+
+    // La función estática para dibujar arcos permanece igual,
+    // su declaración no es necesaria aquí si está definida como 'static' en el .cpp
+    // static void DrawDebugArcManually(...); 
+
+protected:
+    bool IsInFovAndRange(
+        const FVector& ViewPoint,
+        const FVector& ListenerHorizontalForwardNormalized,
+        float MaxRangeSquared,
+        const AActor* TargetActor,
+        float ThresholdHorizontalDistanceSq,
+        float InitialFovHorizontalDotProduct,
+        float FinalFovHorizontalDotProduct,
+        float CachedApexOffset,
+        float& OutDistanceToTarget,
+        FVector& OutDirectionToTargetNormalized
+    ) const;
+
     bool HasLineOfSight(
         const UWorld* World,
         const FVector& ViewPoint,
         const AActor* TargetActor,
-        const AActor* IgnoredActorForTrace // El actor que realiza el trazado (la IA)
+        const AActor* IgnoredActorForTrace
     ) const;
 };
