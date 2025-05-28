@@ -10,6 +10,7 @@
 #include "GameFramework/Pawn.h"
 #include "GameFramework/Character.h" // For ACharacter
 #include "Components/CapsuleComponent.h" // For UCapsuleComponent
+#include "Components/SkeletalMeshComponent.h" // <<<<<<< AÑADIR ESTE INCLUDE
 #include "GameFramework/Actor.h"
 #include "Engine/World.h"
 #include "Kismet/KismetSystemLibrary.h" // For DrawDebugPoint
@@ -271,40 +272,103 @@ bool UAISense_EnhancedSight::IsInFovAndRange(
     return true; // Passed all checks
 }
 
-// Helper function to get raycast target points on an actor
+// MODIFIED FUNCTION //
 TArray<FVector> UAISense_EnhancedSight::GetRaycastTargetPoints(const AActor* TargetActor) const
 {
     TArray<FVector> TargetPoints;
     if (!TargetActor) return TargetPoints;
 
     const ACharacter* TargetCharacter = Cast<const ACharacter>(TargetActor);
-    FVector ActorLocation = TargetActor->GetActorLocation();
-    FVector UpVector = TargetActor->GetActorUpVector(); // Use actor's up vector
+    USkeletalMeshComponent* Mesh = TargetCharacter ? TargetCharacter->GetMesh() : nullptr;
 
-    if (TargetCharacter && TargetCharacter->GetCapsuleComponent())
+    // Nombres de huesos (pueden necesitar ser configurables o tener alternativas para diferentes esqueletos)
+    // Para el esqueleto de Mannequin de UE: "head", "pelvis", "spine_03" (pecho alto/columna superior)
+    const FName HeadBoneName = FName("head");
+    const FName PelvisBoneName = FName("pelvis");
+    const FName UpperChestBoneName = FName("spine_05"); // Hueso común para la parte superior del pecho/columna
+    const FName AltUpperChestBoneName1 = FName("spine_04"); // Alternativa si spine_03 no existe
+    const FName AltUpperChestBoneName2 = FName("clavicle_r"); // Otra alternativa (clavícula derecha)
+
+
+    bool bUsedBones = false;
+
+    if (Mesh && Mesh->SkeletalMesh && Mesh->GetNumBones() > 0)
     {
-        const UCapsuleComponent* Capsule = TargetCharacter->GetCapsuleComponent();
-        const float HalfHeight = Capsule->GetScaledCapsuleHalfHeight();
-        // const float Radius = Capsule->GetScaledCapsuleRadius(); // Could be used for more precise side points if needed
+        FVector HeadLocation, PelvisLocation, UpperChestLocation;
+        bool bGotHead = false;
+        bool bGotPelvis = false;
+        bool bGotUpperChest = false;
 
-        // Chest
-        TargetPoints.Add(ActorLocation + UpVector * (HalfHeight * 0.4f));
-        // Pelvis
-        TargetPoints.Add(ActorLocation);
-        // Head
-        TargetPoints.Add(ActorLocation + UpVector * (HalfHeight * 0.8f));
+        // Obtener localización de la cabeza
+        if (Mesh->GetBoneIndex(HeadBoneName) != INDEX_NONE)
+        {
+            HeadLocation = Mesh->GetSocketLocation(HeadBoneName);
+            bGotHead = true;
+        }
+
+        // Obtener localización de la pelvis
+        if (Mesh->GetBoneIndex(PelvisBoneName) != INDEX_NONE)
+        {
+            PelvisLocation = Mesh->GetSocketLocation(PelvisBoneName);
+            bGotPelvis = true;
+        }
+
+        // Obtener localización del pecho alto
+        if (Mesh->GetBoneIndex(UpperChestBoneName) != INDEX_NONE)
+        {
+            UpperChestLocation = Mesh->GetSocketLocation(UpperChestBoneName);
+            bGotUpperChest = true;
+        }
+        else if (Mesh->GetBoneIndex(AltUpperChestBoneName1) != INDEX_NONE) // Fallback 1 para pecho alto
+        {
+            UpperChestLocation = Mesh->GetSocketLocation(AltUpperChestBoneName1);
+            bGotUpperChest = true;
+        }
+        else if (Mesh->GetBoneIndex(AltUpperChestBoneName2) != INDEX_NONE) // Fallback 2 para pecho alto
+        {
+            UpperChestLocation = Mesh->GetSocketLocation(AltUpperChestBoneName2);
+            bGotUpperChest = true;
+        }
+
+        // Añadir puntos en el orden solicitado: Cabeza, Pecho Alto, Pelvis
+        if (bGotHead) TargetPoints.Add(HeadLocation);
+        if (bGotUpperChest) TargetPoints.Add(UpperChestLocation);
+        if (bGotPelvis) TargetPoints.Add(PelvisLocation);
+
+        if (bGotHead || bGotUpperChest || bGotPelvis)
+        {
+            bUsedBones = true;
+            // UE_LOG(LogTemp, Verbose, TEXT("GetRaycastTargetPoints: Using %d bone locations for %s."), TargetPoints.Num(), *TargetActor->GetName());
+        }
     }
-    else // Fallback for non-character actors or characters without a capsule
-    {
-        FVector Origin, BoxExtent;
-        TargetActor->GetActorBounds(true, Origin, BoxExtent); // Get bounds including components
 
-        // Pelvis (bottom-ish)
-        TargetPoints.Add(Origin - UpVector * (BoxExtent.Z * 0.75f));
-        // Chest (center)
-        TargetPoints.Add(Origin);
-        // Head (top-ish)
-        TargetPoints.Add(Origin + UpVector * (BoxExtent.Z * 0.75f));
+    // Si no se usaron huesos (no es Character, no tiene Mesh, o huesos no encontrados), usar lógica anterior.
+    if (!bUsedBones)
+    {
+        // UE_LOG(LogTemp, Warning, TEXT("GetRaycastTargetPoints: Bones not used for %s. Falling back to bounds/capsule logic."), *TargetActor->GetName());
+        FVector ActorLocation = TargetActor->GetActorLocation();
+        FVector UpVector = TargetActor->GetActorUpVector(); // Usar el UpVector del actor
+
+        if (TargetCharacter && TargetCharacter->GetCapsuleComponent())
+        {
+            const UCapsuleComponent* Capsule = TargetCharacter->GetCapsuleComponent();
+            const float HalfHeight = Capsule->GetScaledCapsuleHalfHeight();
+
+            // Aproximaciones usando la cápsula, en orden: Cabeza, Pecho Alto, Pelvis
+            TargetPoints.Add(ActorLocation + UpVector * (HalfHeight * 0.8f));   // Cabeza
+            TargetPoints.Add(ActorLocation + UpVector * (HalfHeight * 0.4f));   // Pecho Alto (aproximación)
+            TargetPoints.Add(ActorLocation);                                    // Pelvis (base de la cápsula)
+        }
+        else // Fallback para actores no-character o characters sin cápsula
+        {
+            FVector Origin, BoxExtent;
+            TargetActor->GetActorBounds(true, Origin, BoxExtent);
+
+            // Aproximaciones usando los bounds del actor, en orden: Cabeza, Pecho Alto, Pelvis
+            TargetPoints.Add(Origin + UpVector * (BoxExtent.Z * 0.75f));       // Cabeza (parte superior)
+            TargetPoints.Add(Origin);                                           // Pecho Alto (centro del bound)
+            TargetPoints.Add(Origin - UpVector * (BoxExtent.Z * 0.75f));       // Pelvis (parte inferior)
+        }
     }
     return TargetPoints;
 }
@@ -324,7 +388,6 @@ bool UAISense_EnhancedSight::HasLineOfSight(
 
     FCollisionQueryParams QueryParams;
     QueryParams.AddIgnoredActor(IgnoredActorForTrace);
-    // If TargetActor is a Pawn, and has a Controller, ignore the Controller too.
     if (const APawn* TargetPawn = Cast<const APawn>(TargetActor))
     {
         if (AController* Controller = TargetPawn->GetController())
@@ -334,29 +397,34 @@ bool UAISense_EnhancedSight::HasLineOfSight(
     }
 
 
-    if (RequiredHits <= 1) // Original behavior: single trace to actor location
-    {
+    if (RequiredHits <= 1 && SenseConfig->RequiredRaycastHits <= 1) // Comportamiento original si RequiredRaycastHits es 1 (o menos)
+    {                                                              // y no se desea multi-raycast explícitamente desde config.
         FHitResult HitResult;
-        const FVector TargetLocation = TargetActor->GetActorLocation();
+        const FVector TargetLocation = TargetActor->GetActorLocation(); // Traza al centro del actor para el caso simple
         bool bHit = World->LineTraceSingleByChannel(HitResult, ViewPoint, TargetLocation, ECC_Visibility, QueryParams);
 
-        if (SenseConfig->bDrawDebug) // Optional: Debug draw for single trace
+        if (SenseConfig->bDrawDebug)
         {
             DrawDebugLine(World, ViewPoint, TargetLocation, bHit && HitResult.GetActor() != TargetActor ? FColor::Red : FColor::Green, false, 0.0f, 0, 1.0f);
         }
         return !bHit || (HitResult.GetActor() == TargetActor);
     }
-    else // Multi-raycast logic
+    else // Lógica de multi-raycast (cuando RequiredRaycastHits > 1 o se prefiere siempre usar los puntos)
     {
         TArray<FVector> TargetPoints = GetRaycastTargetPoints(TargetActor);
-        if (TargetPoints.Num() == 0) return false; // Should not happen if TargetActor is valid
+        if (TargetPoints.Num() == 0)
+        {
+            // UE_LOG(LogTemp, Warning, TEXT("HasLineOfSight: No target points for %s."), *TargetActor->GetName());
+            return false; // No hay puntos a los que trazar
+        }
+
 
         for (const FVector& TargetPoint : TargetPoints)
         {
             FHitResult HitResult;
             bool bHit = World->LineTraceSingleByChannel(HitResult, ViewPoint, TargetPoint, ECC_Visibility, QueryParams);
 
-            if (SenseConfig->bDrawDebug) // Optional: Debug draw for multi-traces
+            if (SenseConfig->bDrawDebug)
             {
                 DrawDebugLine(World, ViewPoint, TargetPoint, bHit && HitResult.GetActor() != TargetActor ? FColor::Orange : FColor::Blue, false, 0.0f, 0, 0.5f);
                 if (!bHit || (HitResult.GetActor() == TargetActor))
@@ -383,74 +451,99 @@ void UAISense_EnhancedSight::DrawDebugEnhancedFov(
     const FVector& ViewPoint,
     const FVector& ListenerHorizontalForward,
     const FVector& ListenerActualForward3D,
-    const UAISenseConfig_EnhancedSight* SenseConfig, // Se recibe el Config completo
+    const UAISenseConfig_EnhancedSight* SenseConfig,
     float CachedApexOffset,
-    const AActor* ListenerActorForDebug             // Para cálculo robusto de ListenerRight3D
+    const AActor* ListenerActorForDebug
 ) const
 {
-    // Ensure SenseConfig is valid and debug drawing is enabled.
     if (!SenseConfig || !SenseConfig->bDrawDebug || !World)
     {
         return;
     }
 
-    // Colors and parameters for drawing.
     const FColor InitialFovColor = FColor::Green;
-    const FColor LoseSightRadiusColor = FColor::Orange;
-    const FColor SightRadiusDisplayColor = InitialFovColor;
+    const FColor LoseSightRadiusColor = FColor::Orange; // Not used directly in cone, but for overall radius if drawn
+    const FColor SightRadiusDisplayColor = InitialFovColor; // For the main FOV cone lines/arcs
     const FColor VerticalFovDebugColor = FColor::Yellow;
-    const FColor DebugSphereColor = FColor::Red;
+    //const FColor DebugSphereColor = FColor::Red; // Not used
 
     const float DebugLifeTime = 0.0f;
     const float Thickness = 1.0f;
     const int32 ArcSegments = 24;
     const FVector HorizontalRotationAxis = FVector::UpVector;
 
-    // --- Extracción de todos los parámetros necesarios DESDE SenseConfig ---
     const float InitialFovDegrees = SenseConfig->PeripheralVisionAngle;
     const float FinalFovDegrees = SenseConfig->FinalPeripheralVisionAngle;
     const float ThresholdHorizontalDist = SenseConfig->FinalPeripheralVisionAngleThreesholdDistance;
     const float SightRadiusFromConfig = SenseConfig->SightRadius;
-    const float LoseSightRadiusFromConfig = SenseConfig->LoseSightRadius;
+    //const float LoseSightRadiusFromConfig = SenseConfig->LoseSightRadius; // Not directly drawn as a separate cone here
     const float VerticalFovDegrees = SenseConfig->VerticalPeripheralVisionAngle;
-    // *** AQUÍ SE EXTRAEN MaxDistUp y MaxDistDown del SenseConfig ***
     const float ConfigMaxDistUp = SenseConfig->MaxDistUp;
     const float ConfigMaxDistDown = SenseConfig->MaxDistDown;
 
     // --- 1. Draw Horizontal FOV ---
+    // Initial FOV part (up to ThresholdHorizontalDist)
     float HalfInitialFovDeg = InitialFovDegrees * 0.5f;
     FVector LeftEdgeDirInitial = ListenerHorizontalForward.RotateAngleAxis(-HalfInitialFovDeg, HorizontalRotationAxis);
     FVector RightEdgeDirInitial = ListenerHorizontalForward.RotateAngleAxis(HalfInitialFovDeg, HorizontalRotationAxis);
+    FVector EndPointInitialFOV = ViewPoint + ListenerHorizontalForward * ThresholdHorizontalDist;
+
     FVector LeftEdgeEndInitial_AtThreshold = ViewPoint + LeftEdgeDirInitial * ThresholdHorizontalDist;
     FVector RightEdgeEndInitial_AtThreshold = ViewPoint + RightEdgeDirInitial * ThresholdHorizontalDist;
 
     DrawDebugLine(World, ViewPoint, LeftEdgeEndInitial_AtThreshold, InitialFovColor, false, DebugLifeTime, 0, Thickness);
     DrawDebugLine(World, ViewPoint, RightEdgeEndInitial_AtThreshold, InitialFovColor, false, DebugLifeTime, 0, Thickness);
+    DrawDebugArcManuallySimple(World, ViewPoint, ThresholdHorizontalDist, HorizontalRotationAxis, ListenerHorizontalForward, HalfInitialFovDeg, ArcSegments, InitialFovColor, DebugLifeTime, Thickness);
 
+
+    // Final FOV part (from ThresholdHorizontalDist to SightRadiusFromConfig)
     FVector VirtualOriginFinalFov = ViewPoint + ListenerHorizontalForward * CachedApexOffset;
     float HalfFinalFovDeg = FinalFovDegrees * 0.5f;
-    // These points are on the cone originating from VirtualOriginFinalFov
-    FVector LeftEdgeEnd_AtSightRadius = VirtualOriginFinalFov + ListenerHorizontalForward.RotateAngleAxis(-HalfFinalFovDeg, HorizontalRotationAxis) * SightRadiusFromConfig;
-    FVector RightEdgeEnd_AtSightRadius = VirtualOriginFinalFov + ListenerHorizontalForward.RotateAngleAxis(HalfFinalFovDeg, HorizontalRotationAxis) * SightRadiusFromConfig;
+
+    // Calculate endpoints for the lines that connect the initial FOV to the final FOV shape at SightRadius
+    // The connecting lines should go from the edge of the initial FOV at ThresholdHorizontalDist
+    // to the edge of the final FOV cone (from VirtualOrigin) at SightRadiusFromConfig.
+    FVector FarConeEdgeDirLeft = ListenerHorizontalForward.RotateAngleAxis(-HalfFinalFovDeg, HorizontalRotationAxis);
+    FVector FarConeEdgeDirRight = ListenerHorizontalForward.RotateAngleAxis(HalfFinalFovDeg, HorizontalRotationAxis);
+
+    // To correctly draw the trapezoidal shape, the "far" points of the connecting lines
+    // should be on the final FOV cone that extends to SightRadius, but projected from the virtual origin.
+    // The actual length used for drawing the far arc is SightRadiusFromConfig from the *ViewPoint*.
+    // The lines connecting the two FOV sections:
+    float FarDistanceForFinalFOVLines = SightRadiusFromConfig - CachedApexOffset; // This is the radius from virtual origin
+
+    // If CachedApexOffset is positive, VirtualOrigin is behind ViewPoint.
+    // We need to find the intersection of the final cone (from virtual origin) with the SightRadius sphere (from viewpoint).
+    // This is complex. Simpler: draw lines from initial FOV segment ends to where final FOV cone (from virtual origin)
+    // would hit the SightRadius distance *if the cone started at ViewPoint*.
+
+    FVector LeftEdgeEnd_AtSightRadius = ViewPoint + FarConeEdgeDirLeft * SightRadiusFromConfig;
+    FVector RightEdgeEnd_AtSightRadius = ViewPoint + FarConeEdgeDirRight * SightRadiusFromConfig;
+
 
     DrawDebugLine(World, LeftEdgeEndInitial_AtThreshold, LeftEdgeEnd_AtSightRadius, SightRadiusDisplayColor, false, DebugLifeTime, 0, Thickness);
     DrawDebugLine(World, RightEdgeEndInitial_AtThreshold, RightEdgeEnd_AtSightRadius, SightRadiusDisplayColor, false, DebugLifeTime, 0, Thickness);
-    // Far horizontal arc is drawn from VirtualOrigin to match the far FOV cone shape for angles
-    //DrawDebugArcManuallySimple(World, VirtualOriginFinalFov, SightRadiusFromConfig, HorizontalRotationAxis, ListenerHorizontalForward, HalfFinalFovDeg, ArcSegments, SightRadiusDisplayColor, DebugLifeTime, Thickness);
     DrawDebugArcManuallySimple(World, ViewPoint, SightRadiusFromConfig, HorizontalRotationAxis, ListenerHorizontalForward, HalfFinalFovDeg, ArcSegments, SightRadiusDisplayColor, DebugLifeTime, Thickness);
+
 
     // --- 2. Draw Vertical FOV with "Cut and Forward" Lines and Capped Arc ---
     FVector ListenerRight3D_Calculated;
     if (ListenerActorForDebug)
     {
+        // Robust calculation of ListenerRight3D even when looking straight up or down
         if (FMath::Abs(FVector::DotProduct(ListenerActualForward3D, FVector::UpVector)) > 0.99f)
         {
+            // Looking straight up or down, use Actor's RightVector (assuming it's not aligned with Forward)
             ListenerRight3D_Calculated = ListenerActorForDebug->GetActorRightVector();
         }
         else
         {
-            ListenerRight3D_Calculated = FVector::CrossProduct(ListenerActualForward3D, ListenerActorForDebug->GetActorUpVector()).GetSafeNormal();
-            if (ListenerRight3D_Calculated.IsNearlyZero()) ListenerRight3D_Calculated = ListenerActorForDebug->GetActorRightVector();
+            // Standard cross product
+            ListenerRight3D_Calculated = FVector::CrossProduct(ListenerActualForward3D, FVector::UpVector).GetSafeNormal();
+            if (ListenerRight3D_Calculated.IsNearlyZero()) // Should be rare if not looking straight up/down
+            {
+                ListenerRight3D_Calculated = ListenerActorForDebug->GetActorRightVector(); // Fallback
+            }
         }
     }
     else { // Fallback if ListenerActorForDebug is somehow null
@@ -458,60 +551,99 @@ void UAISense_EnhancedSight::DrawDebugEnhancedFov(
         if (ListenerRight3D_Calculated.IsNearlyZero()) ListenerRight3D_Calculated = FVector(0.f, 1.f, 0.f); // World Y as fallback
     }
 
-    float HalfVerticalFovDeg = VerticalFovDegrees * 0.5f;
-    float VerticalDrawExtent = SightRadiusFromConfig; // Max length for vertical FOV edge lines
 
-    // Top Edge
+    float HalfVerticalFovDeg = VerticalFovDegrees * 0.5f;
+    float VerticalDrawExtent = SightRadiusFromConfig;
+
+    // Top Edge with Z-capping visual
     FVector TopEdgeDir = ListenerActualForward3D.RotateAngleAxis(HalfVerticalFovDeg, ListenerRight3D_Calculated).GetSafeNormal();
     FVector TopEndPoint_NoLimit = ViewPoint + TopEdgeDir * VerticalDrawExtent;
-    FVector ActualTopVisualEndPoint = TopEndPoint_NoLimit;
+    FVector ActualTopVisualEndPoint = TopEndPoint_NoLimit; // Start with the unconstrained point
 
-    if (TopEdgeDir.Z > KINDA_SMALL_NUMBER && ConfigMaxDistUp > 0) // Use ConfigMaxDistUp
+    if (TopEdgeDir.Z > KINDA_SMALL_NUMBER) // If looking upwards or horizontally with an upward component
     {
         float DistToCeilingPlane = ConfigMaxDistUp / TopEdgeDir.Z;
         if (DistToCeilingPlane > 0 && DistToCeilingPlane < VerticalDrawExtent)
         {
             FVector IntersectionPointCeiling = ViewPoint + TopEdgeDir * DistToCeilingPlane;
-            DrawDebugLine(World, ViewPoint, IntersectionPointCeiling, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f);
-            ActualTopVisualEndPoint = FVector(TopEndPoint_NoLimit.X, TopEndPoint_NoLimit.Y, IntersectionPointCeiling.Z);
+            DrawDebugLine(World, ViewPoint, IntersectionPointCeiling, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f); // Line to Z-limit
+            // Now draw the "forward" part from the Z-limited point, maintaining original X,Y direction but capped Z
+            FVector ForwardPart = TopEndPoint_NoLimit - IntersectionPointCeiling;
+            FVector ProjectedForwardOnHorizontalPlane = FVector(ForwardPart.X, ForwardPart.Y, 0);
+            if (!ProjectedForwardOnHorizontalPlane.IsNearlyZero())
+            {
+                ActualTopVisualEndPoint = IntersectionPointCeiling + ProjectedForwardOnHorizontalPlane.GetSafeNormal() * ProjectedForwardOnHorizontalPlane.Size();
+                // Ensure it doesn't go beyond the original VerticalDrawExtent in XY plane
+                if ((ActualTopVisualEndPoint - ViewPoint).Size2D() > (TopEndPoint_NoLimit - ViewPoint).Size2D())
+                {
+                    ActualTopVisualEndPoint = IntersectionPointCeiling + (TopEndPoint_NoLimit - IntersectionPointCeiling).GetSafeNormal() * FVector::Dist2D(IntersectionPointCeiling, TopEndPoint_NoLimit);
+                    ActualTopVisualEndPoint.Z = IntersectionPointCeiling.Z; // Keep Z capped
+                }
+            }
+            else {
+                ActualTopVisualEndPoint = IntersectionPointCeiling; // No horizontal component
+            }
             DrawDebugLine(World, IntersectionPointCeiling, ActualTopVisualEndPoint, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f);
         }
-        else { DrawDebugLine(World, ViewPoint, ActualTopVisualEndPoint, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f); }
+        else { DrawDebugLine(World, ViewPoint, ActualTopVisualEndPoint, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f); } // No Z-capping hit within range
     }
-    else { DrawDebugLine(World, ViewPoint, ActualTopVisualEndPoint, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f); }
+    else { DrawDebugLine(World, ViewPoint, ActualTopVisualEndPoint, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f); } // Looking downwards or perfectly horizontal
 
-    // Bottom Edge
+
+    // Bottom Edge with Z-capping visual
     FVector BottomEdgeDir = ListenerActualForward3D.RotateAngleAxis(-HalfVerticalFovDeg, ListenerRight3D_Calculated).GetSafeNormal();
     FVector BottomEndPoint_NoLimit = ViewPoint + BottomEdgeDir * VerticalDrawExtent;
     FVector ActualBottomVisualEndPoint = BottomEndPoint_NoLimit;
 
-    if (BottomEdgeDir.Z < -KINDA_SMALL_NUMBER && ConfigMaxDistDown > 0) // Use ConfigMaxDistDown
+    if (BottomEdgeDir.Z < -KINDA_SMALL_NUMBER) // If looking downwards or horizontally with a downward component
     {
-        float DistToFloorPlane = -ConfigMaxDistDown / BottomEdgeDir.Z;
+        float DistToFloorPlane = -ConfigMaxDistDown / BottomEdgeDir.Z; // MaxDistDown is positive
         if (DistToFloorPlane > 0 && DistToFloorPlane < VerticalDrawExtent)
         {
             FVector IntersectionPointFloor = ViewPoint + BottomEdgeDir * DistToFloorPlane;
             DrawDebugLine(World, ViewPoint, IntersectionPointFloor, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f);
-            ActualBottomVisualEndPoint = FVector(BottomEndPoint_NoLimit.X, BottomEndPoint_NoLimit.Y, IntersectionPointFloor.Z);
+            FVector ForwardPart = BottomEndPoint_NoLimit - IntersectionPointFloor;
+            FVector ProjectedForwardOnHorizontalPlane = FVector(ForwardPart.X, ForwardPart.Y, 0);
+            if (!ProjectedForwardOnHorizontalPlane.IsNearlyZero())
+            {
+                ActualBottomVisualEndPoint = IntersectionPointFloor + ProjectedForwardOnHorizontalPlane.GetSafeNormal() * ProjectedForwardOnHorizontalPlane.Size();
+                if ((ActualBottomVisualEndPoint - ViewPoint).Size2D() > (BottomEndPoint_NoLimit - ViewPoint).Size2D())
+                {
+                    ActualBottomVisualEndPoint = IntersectionPointFloor + (BottomEndPoint_NoLimit - IntersectionPointFloor).GetSafeNormal() * FVector::Dist2D(IntersectionPointFloor, BottomEndPoint_NoLimit);
+                    ActualBottomVisualEndPoint.Z = IntersectionPointFloor.Z; // Keep Z capped
+                }
+            }
+            else {
+                ActualBottomVisualEndPoint = IntersectionPointFloor;
+            }
             DrawDebugLine(World, IntersectionPointFloor, ActualBottomVisualEndPoint, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f);
         }
         else { DrawDebugLine(World, ViewPoint, ActualBottomVisualEndPoint, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f); }
     }
     else { DrawDebugLine(World, ViewPoint, ActualBottomVisualEndPoint, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f); }
 
-    // Use the Capped Arc for vertical FOV visualization
+
     DrawDebugArcManuallyCapped(
         World, ViewPoint, VerticalDrawExtent, ListenerRight3D_Calculated, ListenerActualForward3D,
         HalfVerticalFovDeg, ArcSegments, VerticalFovDebugColor, DebugLifeTime, Thickness * 0.8f,
-        ConfigMaxDistUp, ConfigMaxDistDown // Pass the Z offsets from config
+        ConfigMaxDistUp, ConfigMaxDistDown
     );
 
-    // MaxDistUp/Down horizontal indicator lines
     float IndicationLineLength = 100.0f;
     FVector UpLimitVisualCenter = ViewPoint + FVector(0, 0, ConfigMaxDistUp);
     FVector DownLimitVisualCenter = ViewPoint - FVector(0, 0, ConfigMaxDistDown);
-    FVector HorizontalRightIndicator = FVector::CrossProduct(FVector::UpVector, ListenerHorizontalForward).GetSafeNormal();
-    if (HorizontalRightIndicator.IsNearlyZero()) HorizontalRightIndicator = FVector(0, 1, 0); // Fallback
+
+    FVector HorizontalRightIndicator = ListenerRight3D_Calculated; // Use the same right vector as the vertical FOV cone
+    if (FMath::Abs(FVector::DotProduct(ListenerActualForward3D, FVector::UpVector)) > 0.99f) { // If looking straight up/down
+        // Use a world-aligned axis if ListenerActorForDebug is not available or its right vector is aligned with forward
+        if (ListenerActorForDebug) HorizontalRightIndicator = ListenerActorForDebug->GetActorRightVector();
+        else HorizontalRightIndicator = FVector(0, 1, 0); // Fallback to world Y
+        // Ensure it's horizontal
+        HorizontalRightIndicator.Z = 0;
+        HorizontalRightIndicator = HorizontalRightIndicator.GetSafeNormal();
+        if (HorizontalRightIndicator.IsNearlyZero()) HorizontalRightIndicator = FVector(0, 1, 0); // Final fallback
+    }
+
 
     DrawDebugLine(World, UpLimitVisualCenter - HorizontalRightIndicator * IndicationLineLength, UpLimitVisualCenter + HorizontalRightIndicator * IndicationLineLength, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.5f);
     DrawDebugLine(World, DownLimitVisualCenter - HorizontalRightIndicator * IndicationLineLength, DownLimitVisualCenter + HorizontalRightIndicator * IndicationLineLength, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.5f);
@@ -550,23 +682,24 @@ void UAISense_EnhancedSight::ProcessSight()
 
         FVector ViewPoint;
         FVector ListenerActualForward3D;
-        APawn* ListenerPawn = Cast<APawn>(const_cast<AActor*>(ListenerActor));
-        if (ListenerPawn && ListenerPawn->IsPlayerControlled() && ListenerPawn->GetController()) // Prefer camera for player
+        FRotator ViewRotation; // Moved FRotator declaration out
+
+        APawn* ListenerPawn = Cast<APawn>(const_cast<AActor*>(ListenerActor)); // Const_cast to call non-const pawn methods
+        if (ListenerPawn && ListenerPawn->IsPlayerControlled() && ListenerPawn->GetController())
         {
-            FRotator ViewRotation;
             ListenerPawn->GetController()->GetPlayerViewPoint(ViewPoint, ViewRotation);
             ListenerActualForward3D = ViewRotation.Vector();
         }
-        else if (ListenerPawn) // For AI Pawns or unpossessed pawns
+        else if (ListenerPawn)
         {
-            FRotator ViewRotation;
-            ListenerPawn->GetActorEyesViewPoint(ViewPoint, ViewRotation); // Standard eyes view point
+            ListenerPawn->GetActorEyesViewPoint(ViewPoint, ViewRotation);
             ListenerActualForward3D = ViewRotation.Vector();
         }
-        else // Fallback for non-pawn actors
+        else
         {
             ViewPoint = ListenerActor->GetActorLocation();
             ListenerActualForward3D = ListenerActor->GetActorForwardVector();
+            ViewRotation = ListenerActualForward3D.Rotation(); // Initialize ViewRotation for consistency
         }
 
 
@@ -574,14 +707,14 @@ void UAISense_EnhancedSight::ProcessSight()
         ListenerHorizontalForward.Z = 0.0f;
         if (!ListenerHorizontalForward.Normalize())
         {
-            ListenerHorizontalForward = ListenerActor->GetActorForwardVector(); // Get a fresh vector
+            ListenerHorizontalForward = ListenerActor->GetActorForwardVector();
             ListenerHorizontalForward.Z = 0.0f;
-            if (!ListenerHorizontalForward.Normalize()) { // If still zero (looking straight up/down)
-                ListenerHorizontalForward = FVector::ForwardVector; // Default to world forward
+            if (!ListenerHorizontalForward.Normalize()) {
+                ListenerHorizontalForward = FVector::ForwardVector;
             }
         }
 
-        if (MyConfig->bDrawDebug) // Check bDrawDebug before calling DrawDebugEnhancedFov
+        if (MyConfig->bDrawDebug)
         {
             DrawDebugEnhancedFov(
                 World,
@@ -590,21 +723,21 @@ void UAISense_EnhancedSight::ProcessSight()
                 ListenerActualForward3D,
                 MyConfig,
                 CachedApexOffset,
-                ListenerActor
+                ListenerActor // Pass ListenerActor for robust RightVector calculation in debug
             );
         }
 
         for (TActorIterator<APawn> TargetIt(World); TargetIt; ++TargetIt)
         {
             APawn* TargetActorAsPawn = *TargetIt;
-            if (!TargetActorAsPawn || TargetActorAsPawn == ListenerActor) continue;
-            AActor* TargetActor = TargetActorAsPawn; // Use AActor pointer for general functions
+            if (!TargetActorAsPawn || TargetActorAsPawn == ListenerActor) continue; // Ignore self
+            AActor* TargetActor = TargetActorAsPawn;
 
             const FActorPerceptionInfo* TargetPerceptionInfo = PerceptionComponent->GetActorInfo(*TargetActor);
             bool bWasSuccessfullySensedPreviously = false;
             if (TargetPerceptionInfo)
             {
-                const int32 SenseIndex = GetSenseID().Index; // GetSenseID is member of UAISense
+                const int32 SenseIndex = GetSenseID().Index;
                 if (TargetPerceptionInfo->LastSensedStimuli.IsValidIndex(SenseIndex))
                 {
                     bWasSuccessfullySensedPreviously = TargetPerceptionInfo->LastSensedStimuli[SenseIndex].WasSuccessfullySensed();
@@ -643,7 +776,6 @@ void UAISense_EnhancedSight::ProcessSight()
             bool bHasLineOfSightToTarget = false;
             if (bPassesAllChecks)
             {
-                // Pass MyConfig to HasLineOfSight
                 bHasLineOfSightToTarget = HasLineOfSight(World, ViewPoint, TargetActor, ListenerActor, MyConfig);
             }
             const bool bIsCurrentlyVisible = bPassesAllChecks && bHasLineOfSightToTarget;
@@ -659,8 +791,7 @@ void UAISense_EnhancedSight::ProcessSight()
             {
                 if (bWasSuccessfullySensedPreviously)
                 {
-                    // If it was seen before, and now it's not, report failure to "forget"
-                    bShouldReportStimulus = true; // Report SensingFailed
+                    bShouldReportStimulus = true;
                 }
             }
 
@@ -668,12 +799,12 @@ void UAISense_EnhancedSight::ProcessSight()
             {
                 const FVector ActualTargetLocation = TargetActor->GetActorLocation();
                 FAIStimulus Stimulus(
-                    *this, // Sense specific data
-                    bIsCurrentlyVisible ? 1.0f : 0.0f, // Strength
-                    ActualTargetLocation, // Stimulus location
-                    ViewPoint, // Receiver's location
-                    CurrentSenseResult, // SensingSucceeded or SensingFailed
-                    NAME_None // Corrected: Pass NAME_None or a specific FName tag
+                    *this,
+                    bIsCurrentlyVisible ? 1.0f : 0.0f,
+                    ActualTargetLocation,
+                    ViewPoint,
+                    CurrentSenseResult,
+                    GetSenseID().Name // Use the sense's FName as tag
                 );
 
                 Listener.RegisterStimulus(TargetActor, Stimulus);
