@@ -451,99 +451,74 @@ void UAISense_EnhancedSight::DrawDebugEnhancedFov(
     const FVector& ViewPoint,
     const FVector& ListenerHorizontalForward,
     const FVector& ListenerActualForward3D,
-    const UAISenseConfig_EnhancedSight* SenseConfig,
+    const UAISenseConfig_EnhancedSight* SenseConfig, // Se recibe el Config completo
     float CachedApexOffset,
-    const AActor* ListenerActorForDebug
+    const AActor* ListenerActorForDebug             // Para cálculo robusto de ListenerRight3D
 ) const
 {
+    // Ensure SenseConfig is valid and debug drawing is enabled.
     if (!SenseConfig || !SenseConfig->bDrawDebug || !World)
     {
         return;
     }
 
+    // Colors and parameters for drawing.
     const FColor InitialFovColor = FColor::Green;
-    const FColor LoseSightRadiusColor = FColor::Orange; // Not used directly in cone, but for overall radius if drawn
-    const FColor SightRadiusDisplayColor = InitialFovColor; // For the main FOV cone lines/arcs
+    const FColor LoseSightRadiusColor = FColor::Orange;
+    const FColor SightRadiusDisplayColor = InitialFovColor;
     const FColor VerticalFovDebugColor = FColor::Yellow;
-    //const FColor DebugSphereColor = FColor::Red; // Not used
+    const FColor DebugSphereColor = FColor::Red;
 
     const float DebugLifeTime = 0.0f;
     const float Thickness = 1.0f;
     const int32 ArcSegments = 24;
     const FVector HorizontalRotationAxis = FVector::UpVector;
 
+    // --- Extracción de todos los parámetros necesarios DESDE SenseConfig ---
     const float InitialFovDegrees = SenseConfig->PeripheralVisionAngle;
     const float FinalFovDegrees = SenseConfig->FinalPeripheralVisionAngle;
     const float ThresholdHorizontalDist = SenseConfig->FinalPeripheralVisionAngleThreesholdDistance;
     const float SightRadiusFromConfig = SenseConfig->SightRadius;
-    //const float LoseSightRadiusFromConfig = SenseConfig->LoseSightRadius; // Not directly drawn as a separate cone here
+    const float LoseSightRadiusFromConfig = SenseConfig->LoseSightRadius;
     const float VerticalFovDegrees = SenseConfig->VerticalPeripheralVisionAngle;
+    // *** AQUÍ SE EXTRAEN MaxDistUp y MaxDistDown del SenseConfig ***
     const float ConfigMaxDistUp = SenseConfig->MaxDistUp;
     const float ConfigMaxDistDown = SenseConfig->MaxDistDown;
 
     // --- 1. Draw Horizontal FOV ---
-    // Initial FOV part (up to ThresholdHorizontalDist)
     float HalfInitialFovDeg = InitialFovDegrees * 0.5f;
     FVector LeftEdgeDirInitial = ListenerHorizontalForward.RotateAngleAxis(-HalfInitialFovDeg, HorizontalRotationAxis);
     FVector RightEdgeDirInitial = ListenerHorizontalForward.RotateAngleAxis(HalfInitialFovDeg, HorizontalRotationAxis);
-    FVector EndPointInitialFOV = ViewPoint + ListenerHorizontalForward * ThresholdHorizontalDist;
-
     FVector LeftEdgeEndInitial_AtThreshold = ViewPoint + LeftEdgeDirInitial * ThresholdHorizontalDist;
     FVector RightEdgeEndInitial_AtThreshold = ViewPoint + RightEdgeDirInitial * ThresholdHorizontalDist;
 
     DrawDebugLine(World, ViewPoint, LeftEdgeEndInitial_AtThreshold, InitialFovColor, false, DebugLifeTime, 0, Thickness);
     DrawDebugLine(World, ViewPoint, RightEdgeEndInitial_AtThreshold, InitialFovColor, false, DebugLifeTime, 0, Thickness);
-    DrawDebugArcManuallySimple(World, ViewPoint, ThresholdHorizontalDist, HorizontalRotationAxis, ListenerHorizontalForward, HalfInitialFovDeg, ArcSegments, InitialFovColor, DebugLifeTime, Thickness);
 
-
-    // Final FOV part (from ThresholdHorizontalDist to SightRadiusFromConfig)
     FVector VirtualOriginFinalFov = ViewPoint + ListenerHorizontalForward * CachedApexOffset;
     float HalfFinalFovDeg = FinalFovDegrees * 0.5f;
-
-    // Calculate endpoints for the lines that connect the initial FOV to the final FOV shape at SightRadius
-    // The connecting lines should go from the edge of the initial FOV at ThresholdHorizontalDist
-    // to the edge of the final FOV cone (from VirtualOrigin) at SightRadiusFromConfig.
-    FVector FarConeEdgeDirLeft = ListenerHorizontalForward.RotateAngleAxis(-HalfFinalFovDeg, HorizontalRotationAxis);
-    FVector FarConeEdgeDirRight = ListenerHorizontalForward.RotateAngleAxis(HalfFinalFovDeg, HorizontalRotationAxis);
-
-    // To correctly draw the trapezoidal shape, the "far" points of the connecting lines
-    // should be on the final FOV cone that extends to SightRadius, but projected from the virtual origin.
-    // The actual length used for drawing the far arc is SightRadiusFromConfig from the *ViewPoint*.
-    // The lines connecting the two FOV sections:
-    float FarDistanceForFinalFOVLines = SightRadiusFromConfig - CachedApexOffset; // This is the radius from virtual origin
-
-    // If CachedApexOffset is positive, VirtualOrigin is behind ViewPoint.
-    // We need to find the intersection of the final cone (from virtual origin) with the SightRadius sphere (from viewpoint).
-    // This is complex. Simpler: draw lines from initial FOV segment ends to where final FOV cone (from virtual origin)
-    // would hit the SightRadius distance *if the cone started at ViewPoint*.
-
-    FVector LeftEdgeEnd_AtSightRadius = ViewPoint + FarConeEdgeDirLeft * SightRadiusFromConfig;
-    FVector RightEdgeEnd_AtSightRadius = ViewPoint + FarConeEdgeDirRight * SightRadiusFromConfig;
-
+    // These points are on the cone originating from VirtualOriginFinalFov
+    FVector LeftEdgeEnd_AtSightRadius = VirtualOriginFinalFov + ListenerHorizontalForward.RotateAngleAxis(-HalfFinalFovDeg, HorizontalRotationAxis) * SightRadiusFromConfig;
+    FVector RightEdgeEnd_AtSightRadius = VirtualOriginFinalFov + ListenerHorizontalForward.RotateAngleAxis(HalfFinalFovDeg, HorizontalRotationAxis) * SightRadiusFromConfig;
 
     DrawDebugLine(World, LeftEdgeEndInitial_AtThreshold, LeftEdgeEnd_AtSightRadius, SightRadiusDisplayColor, false, DebugLifeTime, 0, Thickness);
     DrawDebugLine(World, RightEdgeEndInitial_AtThreshold, RightEdgeEnd_AtSightRadius, SightRadiusDisplayColor, false, DebugLifeTime, 0, Thickness);
+    // Far horizontal arc is drawn from VirtualOrigin to match the far FOV cone shape for angles
+    //DrawDebugArcManuallySimple(World, VirtualOriginFinalFov, SightRadiusFromConfig, HorizontalRotationAxis, ListenerHorizontalForward, HalfFinalFovDeg, ArcSegments, SightRadiusDisplayColor, DebugLifeTime, Thickness);
     DrawDebugArcManuallySimple(World, ViewPoint, SightRadiusFromConfig, HorizontalRotationAxis, ListenerHorizontalForward, HalfFinalFovDeg, ArcSegments, SightRadiusDisplayColor, DebugLifeTime, Thickness);
-
 
     // --- 2. Draw Vertical FOV with "Cut and Forward" Lines and Capped Arc ---
     FVector ListenerRight3D_Calculated;
     if (ListenerActorForDebug)
     {
-        // Robust calculation of ListenerRight3D even when looking straight up or down
         if (FMath::Abs(FVector::DotProduct(ListenerActualForward3D, FVector::UpVector)) > 0.99f)
         {
-            // Looking straight up or down, use Actor's RightVector (assuming it's not aligned with Forward)
             ListenerRight3D_Calculated = ListenerActorForDebug->GetActorRightVector();
         }
         else
         {
-            // Standard cross product
-            ListenerRight3D_Calculated = FVector::CrossProduct(ListenerActualForward3D, FVector::UpVector).GetSafeNormal();
-            if (ListenerRight3D_Calculated.IsNearlyZero()) // Should be rare if not looking straight up/down
-            {
-                ListenerRight3D_Calculated = ListenerActorForDebug->GetActorRightVector(); // Fallback
-            }
+            ListenerRight3D_Calculated = FVector::CrossProduct(ListenerActualForward3D, ListenerActorForDebug->GetActorUpVector()).GetSafeNormal();
+            if (ListenerRight3D_Calculated.IsNearlyZero()) ListenerRight3D_Calculated = ListenerActorForDebug->GetActorRightVector();
         }
     }
     else { // Fallback if ListenerActorForDebug is somehow null
@@ -551,99 +526,60 @@ void UAISense_EnhancedSight::DrawDebugEnhancedFov(
         if (ListenerRight3D_Calculated.IsNearlyZero()) ListenerRight3D_Calculated = FVector(0.f, 1.f, 0.f); // World Y as fallback
     }
 
-
     float HalfVerticalFovDeg = VerticalFovDegrees * 0.5f;
-    float VerticalDrawExtent = SightRadiusFromConfig;
+    float VerticalDrawExtent = SightRadiusFromConfig; // Max length for vertical FOV edge lines
 
-    // Top Edge with Z-capping visual
+    // Top Edge
     FVector TopEdgeDir = ListenerActualForward3D.RotateAngleAxis(HalfVerticalFovDeg, ListenerRight3D_Calculated).GetSafeNormal();
     FVector TopEndPoint_NoLimit = ViewPoint + TopEdgeDir * VerticalDrawExtent;
-    FVector ActualTopVisualEndPoint = TopEndPoint_NoLimit; // Start with the unconstrained point
+    FVector ActualTopVisualEndPoint = TopEndPoint_NoLimit;
 
-    if (TopEdgeDir.Z > KINDA_SMALL_NUMBER) // If looking upwards or horizontally with an upward component
+    if (TopEdgeDir.Z > KINDA_SMALL_NUMBER && ConfigMaxDistUp > 0) // Use ConfigMaxDistUp
     {
         float DistToCeilingPlane = ConfigMaxDistUp / TopEdgeDir.Z;
         if (DistToCeilingPlane > 0 && DistToCeilingPlane < VerticalDrawExtent)
         {
             FVector IntersectionPointCeiling = ViewPoint + TopEdgeDir * DistToCeilingPlane;
-            DrawDebugLine(World, ViewPoint, IntersectionPointCeiling, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f); // Line to Z-limit
-            // Now draw the "forward" part from the Z-limited point, maintaining original X,Y direction but capped Z
-            FVector ForwardPart = TopEndPoint_NoLimit - IntersectionPointCeiling;
-            FVector ProjectedForwardOnHorizontalPlane = FVector(ForwardPart.X, ForwardPart.Y, 0);
-            if (!ProjectedForwardOnHorizontalPlane.IsNearlyZero())
-            {
-                ActualTopVisualEndPoint = IntersectionPointCeiling + ProjectedForwardOnHorizontalPlane.GetSafeNormal() * ProjectedForwardOnHorizontalPlane.Size();
-                // Ensure it doesn't go beyond the original VerticalDrawExtent in XY plane
-                if ((ActualTopVisualEndPoint - ViewPoint).Size2D() > (TopEndPoint_NoLimit - ViewPoint).Size2D())
-                {
-                    ActualTopVisualEndPoint = IntersectionPointCeiling + (TopEndPoint_NoLimit - IntersectionPointCeiling).GetSafeNormal() * FVector::Dist2D(IntersectionPointCeiling, TopEndPoint_NoLimit);
-                    ActualTopVisualEndPoint.Z = IntersectionPointCeiling.Z; // Keep Z capped
-                }
-            }
-            else {
-                ActualTopVisualEndPoint = IntersectionPointCeiling; // No horizontal component
-            }
+            DrawDebugLine(World, ViewPoint, IntersectionPointCeiling, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f);
+            ActualTopVisualEndPoint = FVector(TopEndPoint_NoLimit.X, TopEndPoint_NoLimit.Y, IntersectionPointCeiling.Z);
             DrawDebugLine(World, IntersectionPointCeiling, ActualTopVisualEndPoint, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f);
         }
-        else { DrawDebugLine(World, ViewPoint, ActualTopVisualEndPoint, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f); } // No Z-capping hit within range
+        else { DrawDebugLine(World, ViewPoint, ActualTopVisualEndPoint, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f); }
     }
-    else { DrawDebugLine(World, ViewPoint, ActualTopVisualEndPoint, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f); } // Looking downwards or perfectly horizontal
+    else { DrawDebugLine(World, ViewPoint, ActualTopVisualEndPoint, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f); }
 
-
-    // Bottom Edge with Z-capping visual
+    // Bottom Edge
     FVector BottomEdgeDir = ListenerActualForward3D.RotateAngleAxis(-HalfVerticalFovDeg, ListenerRight3D_Calculated).GetSafeNormal();
     FVector BottomEndPoint_NoLimit = ViewPoint + BottomEdgeDir * VerticalDrawExtent;
     FVector ActualBottomVisualEndPoint = BottomEndPoint_NoLimit;
 
-    if (BottomEdgeDir.Z < -KINDA_SMALL_NUMBER) // If looking downwards or horizontally with a downward component
+    if (BottomEdgeDir.Z < -KINDA_SMALL_NUMBER && ConfigMaxDistDown > 0) // Use ConfigMaxDistDown
     {
-        float DistToFloorPlane = -ConfigMaxDistDown / BottomEdgeDir.Z; // MaxDistDown is positive
+        float DistToFloorPlane = -ConfigMaxDistDown / BottomEdgeDir.Z;
         if (DistToFloorPlane > 0 && DistToFloorPlane < VerticalDrawExtent)
         {
             FVector IntersectionPointFloor = ViewPoint + BottomEdgeDir * DistToFloorPlane;
             DrawDebugLine(World, ViewPoint, IntersectionPointFloor, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f);
-            FVector ForwardPart = BottomEndPoint_NoLimit - IntersectionPointFloor;
-            FVector ProjectedForwardOnHorizontalPlane = FVector(ForwardPart.X, ForwardPart.Y, 0);
-            if (!ProjectedForwardOnHorizontalPlane.IsNearlyZero())
-            {
-                ActualBottomVisualEndPoint = IntersectionPointFloor + ProjectedForwardOnHorizontalPlane.GetSafeNormal() * ProjectedForwardOnHorizontalPlane.Size();
-                if ((ActualBottomVisualEndPoint - ViewPoint).Size2D() > (BottomEndPoint_NoLimit - ViewPoint).Size2D())
-                {
-                    ActualBottomVisualEndPoint = IntersectionPointFloor + (BottomEndPoint_NoLimit - IntersectionPointFloor).GetSafeNormal() * FVector::Dist2D(IntersectionPointFloor, BottomEndPoint_NoLimit);
-                    ActualBottomVisualEndPoint.Z = IntersectionPointFloor.Z; // Keep Z capped
-                }
-            }
-            else {
-                ActualBottomVisualEndPoint = IntersectionPointFloor;
-            }
+            ActualBottomVisualEndPoint = FVector(BottomEndPoint_NoLimit.X, BottomEndPoint_NoLimit.Y, IntersectionPointFloor.Z);
             DrawDebugLine(World, IntersectionPointFloor, ActualBottomVisualEndPoint, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f);
         }
         else { DrawDebugLine(World, ViewPoint, ActualBottomVisualEndPoint, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f); }
     }
     else { DrawDebugLine(World, ViewPoint, ActualBottomVisualEndPoint, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f); }
 
-
+    // Use the Capped Arc for vertical FOV visualization
     DrawDebugArcManuallyCapped(
         World, ViewPoint, VerticalDrawExtent, ListenerRight3D_Calculated, ListenerActualForward3D,
         HalfVerticalFovDeg, ArcSegments, VerticalFovDebugColor, DebugLifeTime, Thickness * 0.8f,
-        ConfigMaxDistUp, ConfigMaxDistDown
+        ConfigMaxDistUp, ConfigMaxDistDown // Pass the Z offsets from config
     );
 
+    // MaxDistUp/Down horizontal indicator lines
     float IndicationLineLength = 100.0f;
     FVector UpLimitVisualCenter = ViewPoint + FVector(0, 0, ConfigMaxDistUp);
     FVector DownLimitVisualCenter = ViewPoint - FVector(0, 0, ConfigMaxDistDown);
-
-    FVector HorizontalRightIndicator = ListenerRight3D_Calculated; // Use the same right vector as the vertical FOV cone
-    if (FMath::Abs(FVector::DotProduct(ListenerActualForward3D, FVector::UpVector)) > 0.99f) { // If looking straight up/down
-        // Use a world-aligned axis if ListenerActorForDebug is not available or its right vector is aligned with forward
-        if (ListenerActorForDebug) HorizontalRightIndicator = ListenerActorForDebug->GetActorRightVector();
-        else HorizontalRightIndicator = FVector(0, 1, 0); // Fallback to world Y
-        // Ensure it's horizontal
-        HorizontalRightIndicator.Z = 0;
-        HorizontalRightIndicator = HorizontalRightIndicator.GetSafeNormal();
-        if (HorizontalRightIndicator.IsNearlyZero()) HorizontalRightIndicator = FVector(0, 1, 0); // Final fallback
-    }
-
+    FVector HorizontalRightIndicator = FVector::CrossProduct(FVector::UpVector, ListenerHorizontalForward).GetSafeNormal();
+    if (HorizontalRightIndicator.IsNearlyZero()) HorizontalRightIndicator = FVector(0, 1, 0); // Fallback
 
     DrawDebugLine(World, UpLimitVisualCenter - HorizontalRightIndicator * IndicationLineLength, UpLimitVisualCenter + HorizontalRightIndicator * IndicationLineLength, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.5f);
     DrawDebugLine(World, DownLimitVisualCenter - HorizontalRightIndicator * IndicationLineLength, DownLimitVisualCenter + HorizontalRightIndicator * IndicationLineLength, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.5f);
