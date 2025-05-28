@@ -291,6 +291,11 @@ bool UAISense_EnhancedSight::HasLineOfSight(
     return !bHit || (HitResult.GetActor() == TargetActor);
 }
 
+// En AISense_EnhancedSight.cpp
+
+// ... (otros includes y funciones como Constructor, PostInitProperties, Update, 
+//      CalculateFovApexOffset, IsInFovAndRange, HasLineOfSight, 
+//      DrawDebugArcManuallySimple, DrawDebugArcManuallyCapped) ...
 
 // Draws the debug visualization for the enhanced FOV.
 void UAISense_EnhancedSight::DrawDebugEnhancedFov(
@@ -298,32 +303,39 @@ void UAISense_EnhancedSight::DrawDebugEnhancedFov(
     const FVector& ViewPoint,
     const FVector& ListenerHorizontalForward,
     const FVector& ListenerActualForward3D,
-    const UAISenseConfig_EnhancedSight* SenseConfig,
+    const UAISenseConfig_EnhancedSight* SenseConfig, // Se recibe el Config completo
     float CachedApexOffset,
-    const AActor* ListenerActorForDebug // Used for robust RightVector
+    const AActor* ListenerActorForDebug             // Para cálculo robusto de ListenerRight3D
 ) const
 {
-    if (!SenseConfig || !SenseConfig->bDrawDebug || !World) return;
+    // Ensure SenseConfig is valid and debug drawing is enabled.
+    if (!SenseConfig || !SenseConfig->bDrawDebug || !World)
+    {
+        return;
+    }
 
+    // Colors and parameters for drawing.
     const FColor InitialFovColor = FColor::Green;
     const FColor LoseSightRadiusColor = FColor::Orange;
     const FColor SightRadiusDisplayColor = InitialFovColor;
     const FColor VerticalFovDebugColor = FColor::Yellow;
+    const FColor DebugSphereColor = FColor::Red;
 
     const float DebugLifeTime = 0.0f;
     const float Thickness = 1.0f;
     const int32 ArcSegments = 24;
     const FVector HorizontalRotationAxis = FVector::UpVector;
 
-    // Extract parameters from SenseConfig for convenience
+    // --- Extracción de todos los parámetros necesarios DESDE SenseConfig ---
     const float InitialFovDegrees = SenseConfig->PeripheralVisionAngle;
     const float FinalFovDegrees = SenseConfig->FinalPeripheralVisionAngle;
     const float ThresholdHorizontalDist = SenseConfig->FinalPeripheralVisionAngleThreesholdDistance;
     const float SightRadiusFromConfig = SenseConfig->SightRadius;
     const float LoseSightRadiusFromConfig = SenseConfig->LoseSightRadius;
     const float VerticalFovDegrees = SenseConfig->VerticalPeripheralVisionAngle;
-    const float MaxDistUp = SenseConfig->MaxDistUp;
-    const float MaxDistDown = SenseConfig->MaxDistDown;
+    // *** AQUÍ SE EXTRAEN MaxDistUp y MaxDistDown del SenseConfig ***
+    const float ConfigMaxDistUp = SenseConfig->MaxDistUp;
+    const float ConfigMaxDistDown = SenseConfig->MaxDistDown;
 
     // --- 1. Draw Horizontal FOV ---
     float HalfInitialFovDeg = InitialFovDegrees * 0.5f;
@@ -338,27 +350,17 @@ void UAISense_EnhancedSight::DrawDebugEnhancedFov(
 
     FVector VirtualOriginFinalFov = ViewPoint + ListenerHorizontalForward * CachedApexOffset;
     float HalfFinalFovDeg = FinalFovDegrees * 0.5f;
-    FVector LeftEdgeEnd_AtSightRadius_FromViewPoint = ViewPoint + ListenerHorizontalForward.RotateAngleAxis(-HalfFinalFovDeg, HorizontalRotationAxis) * SightRadiusFromConfig;
-    FVector RightEdgeEnd_AtSightRadius_FromViewPoint = ViewPoint + ListenerHorizontalForward.RotateAngleAxis(HalfFinalFovDeg, HorizontalRotationAxis) * SightRadiusFromConfig;
+    // These points are on the cone originating from VirtualOriginFinalFov
+    FVector LeftEdgeEnd_AtSightRadius = VirtualOriginFinalFov + ListenerHorizontalForward.RotateAngleAxis(-HalfFinalFovDeg, HorizontalRotationAxis) * SightRadiusFromConfig;
+    FVector RightEdgeEnd_AtSightRadius = VirtualOriginFinalFov + ListenerHorizontalForward.RotateAngleAxis(HalfFinalFovDeg, HorizontalRotationAxis) * SightRadiusFromConfig;
 
-    DrawDebugLine(World, LeftEdgeEndInitial_AtThreshold, LeftEdgeEnd_AtSightRadius_FromViewPoint, SightRadiusDisplayColor, false, DebugLifeTime, 0, Thickness);
-    DrawDebugLine(World, RightEdgeEndInitial_AtThreshold, RightEdgeEnd_AtSightRadius_FromViewPoint, SightRadiusDisplayColor, false, DebugLifeTime, 0, Thickness);
+    DrawDebugLine(World, LeftEdgeEndInitial_AtThreshold, LeftEdgeEnd_AtSightRadius, SightRadiusDisplayColor, false, DebugLifeTime, 0, Thickness);
+    DrawDebugLine(World, RightEdgeEndInitial_AtThreshold, RightEdgeEnd_AtSightRadius, SightRadiusDisplayColor, false, DebugLifeTime, 0, Thickness);
+    // Far horizontal arc is drawn from VirtualOrigin to match the far FOV cone shape for angles
+    //DrawDebugArcManuallySimple(World, VirtualOriginFinalFov, SightRadiusFromConfig, HorizontalRotationAxis, ListenerHorizontalForward, HalfFinalFovDeg, ArcSegments, SightRadiusDisplayColor, DebugLifeTime, Thickness);
     DrawDebugArcManuallySimple(World, ViewPoint, SightRadiusFromConfig, HorizontalRotationAxis, ListenerHorizontalForward, HalfFinalFovDeg, ArcSegments, SightRadiusDisplayColor, DebugLifeTime, Thickness);
 
-    if (LoseSightRadiusFromConfig > SightRadiusFromConfig)
-    {
-        FVector LeftEdgeEnd_AtLoseRadius_FromViewPoint = ViewPoint + ListenerHorizontalForward.RotateAngleAxis(-HalfFinalFovDeg, HorizontalRotationAxis) * LoseSightRadiusFromConfig;
-        FVector RightEdgeEnd_AtLoseRadius_FromViewPoint = ViewPoint + ListenerHorizontalForward.RotateAngleAxis(HalfFinalFovDeg, HorizontalRotationAxis) * LoseSightRadiusFromConfig;
-        DrawDebugLine(World, LeftEdgeEnd_AtSightRadius_FromViewPoint, LeftEdgeEnd_AtLoseRadius_FromViewPoint, LoseSightRadiusColor, false, DebugLifeTime, 0, Thickness * 0.7f);
-        DrawDebugLine(World, RightEdgeEnd_AtSightRadius_FromViewPoint, RightEdgeEnd_AtLoseRadius_FromViewPoint, LoseSightRadiusColor, false, DebugLifeTime, 0, Thickness * 0.7f);
-        DrawDebugArcManuallySimple(World, ViewPoint, LoseSightRadiusFromConfig, HorizontalRotationAxis, ListenerHorizontalForward, HalfFinalFovDeg, ArcSegments, LoseSightRadiusColor, DebugLifeTime, Thickness * 0.7f);
-    }
-    if (FMath::Abs(CachedApexOffset) > KINDA_SMALL_NUMBER)
-    {
-        DrawDebugPoint(World, VirtualOriginFinalFov, 15.f, FColor::Magenta, false, DebugLifeTime);
-    }
-
-    // --- 2. Draw Vertical FOV with "Cut and Forward" Lines ---
+    // --- 2. Draw Vertical FOV with "Cut and Forward" Lines and Capped Arc ---
     FVector ListenerRight3D_Calculated;
     if (ListenerActorForDebug)
     {
@@ -372,9 +374,9 @@ void UAISense_EnhancedSight::DrawDebugEnhancedFov(
             if (ListenerRight3D_Calculated.IsNearlyZero()) ListenerRight3D_Calculated = ListenerActorForDebug->GetActorRightVector();
         }
     }
-    else {
+    else { // Fallback if ListenerActorForDebug is somehow null
         ListenerRight3D_Calculated = FVector::CrossProduct(FVector::UpVector, ListenerActualForward3D).GetSafeNormal();
-        if (ListenerRight3D_Calculated.IsNearlyZero()) ListenerRight3D_Calculated = FVector(0.f, 1.f, 0.f);
+        if (ListenerRight3D_Calculated.IsNearlyZero()) ListenerRight3D_Calculated = FVector(0.f, 1.f, 0.f); // World Y as fallback
     }
 
     float HalfVerticalFovDeg = VerticalFovDegrees * 0.5f;
@@ -385,9 +387,9 @@ void UAISense_EnhancedSight::DrawDebugEnhancedFov(
     FVector TopEndPoint_NoLimit = ViewPoint + TopEdgeDir * VerticalDrawExtent;
     FVector ActualTopVisualEndPoint = TopEndPoint_NoLimit;
 
-    if (TopEdgeDir.Z > KINDA_SMALL_NUMBER && MaxDistUp > 0)
+    if (TopEdgeDir.Z > KINDA_SMALL_NUMBER && ConfigMaxDistUp > 0) // Use ConfigMaxDistUp
     {
-        float DistToCeilingPlane = MaxDistUp / TopEdgeDir.Z;
+        float DistToCeilingPlane = ConfigMaxDistUp / TopEdgeDir.Z;
         if (DistToCeilingPlane > 0 && DistToCeilingPlane < VerticalDrawExtent)
         {
             FVector IntersectionPointCeiling = ViewPoint + TopEdgeDir * DistToCeilingPlane;
@@ -404,9 +406,9 @@ void UAISense_EnhancedSight::DrawDebugEnhancedFov(
     FVector BottomEndPoint_NoLimit = ViewPoint + BottomEdgeDir * VerticalDrawExtent;
     FVector ActualBottomVisualEndPoint = BottomEndPoint_NoLimit;
 
-    if (BottomEdgeDir.Z < -KINDA_SMALL_NUMBER && MaxDistDown > 0)
+    if (BottomEdgeDir.Z < -KINDA_SMALL_NUMBER && ConfigMaxDistDown > 0) // Use ConfigMaxDistDown
     {
-        float DistToFloorPlane = -MaxDistDown / BottomEdgeDir.Z;
+        float DistToFloorPlane = -ConfigMaxDistDown / BottomEdgeDir.Z;
         if (DistToFloorPlane > 0 && DistToFloorPlane < VerticalDrawExtent)
         {
             FVector IntersectionPointFloor = ViewPoint + BottomEdgeDir * DistToFloorPlane;
@@ -418,22 +420,24 @@ void UAISense_EnhancedSight::DrawDebugEnhancedFov(
     }
     else { DrawDebugLine(World, ViewPoint, ActualBottomVisualEndPoint, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.8f); }
 
-    // Use the new Capped Arc for vertical FOV visualization
+    // Use the Capped Arc for vertical FOV visualization
     DrawDebugArcManuallyCapped(
         World, ViewPoint, VerticalDrawExtent, ListenerRight3D_Calculated, ListenerActualForward3D,
         HalfVerticalFovDeg, ArcSegments, VerticalFovDebugColor, DebugLifeTime, Thickness * 0.8f,
-        MaxDistUp, MaxDistDown);
+        ConfigMaxDistUp, ConfigMaxDistDown // Pass the Z offsets from config
+    );
 
     // MaxDistUp/Down horizontal indicator lines
     float IndicationLineLength = 100.0f;
-    FVector UpLimitVisualCenter = ViewPoint + FVector(0, 0, MaxDistUp);
-    FVector DownLimitVisualCenter = ViewPoint - FVector(0, 0, MaxDistDown);
+    FVector UpLimitVisualCenter = ViewPoint + FVector(0, 0, ConfigMaxDistUp);
+    FVector DownLimitVisualCenter = ViewPoint - FVector(0, 0, ConfigMaxDistDown);
     FVector HorizontalRightIndicator = FVector::CrossProduct(FVector::UpVector, ListenerHorizontalForward).GetSafeNormal();
-    if (HorizontalRightIndicator.IsNearlyZero()) HorizontalRightIndicator = FVector(0, 1, 0);
+    if (HorizontalRightIndicator.IsNearlyZero()) HorizontalRightIndicator = FVector(0, 1, 0); // Fallback
 
     DrawDebugLine(World, UpLimitVisualCenter - HorizontalRightIndicator * IndicationLineLength, UpLimitVisualCenter + HorizontalRightIndicator * IndicationLineLength, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.5f);
     DrawDebugLine(World, DownLimitVisualCenter - HorizontalRightIndicator * IndicationLineLength, DownLimitVisualCenter + HorizontalRightIndicator * IndicationLineLength, VerticalFovDebugColor, false, DebugLifeTime, 0, Thickness * 0.5f);
 }
+
 
 // Main perception processing function.
 void UAISense_EnhancedSight::ProcessSight()
